@@ -1,0 +1,84 @@
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        public: false
+
+    Emporiqa\SyliusPlugin\Service\WebhookSender:
+        arguments:
+            $webhookUrl: '%emporiqa.webhook_url%'
+            $storeId: '%emporiqa.store_id%'
+            $webhookSecret: '%emporiqa.webhook_secret%'
+
+    Emporiqa\SyliusPlugin\Service\WebhookSenderInterface: '@Emporiqa\SyliusPlugin\Service\WebhookSender'
+
+    Emporiqa\SyliusPlugin\Service\ProductFormatter:
+        arguments:
+            $enabledLanguages: '%emporiqa.enabled_languages%'
+
+    Emporiqa\SyliusPlugin\Service\ProductFormatterInterface: '@Emporiqa\SyliusPlugin\Service\ProductFormatter'
+
+    Emporiqa\SyliusPlugin\Service\PageUrlResolver: ~
+
+    Emporiqa\SyliusPlugin\Service\PageUrlResolverInterface: '@Emporiqa\SyliusPlugin\Service\PageUrlResolver'
+
+    Emporiqa\SyliusPlugin\Service\PageFormatter:
+        arguments:
+            $enabledLanguages: '%emporiqa.enabled_languages%'
+
+    Emporiqa\SyliusPlugin\Service\PageFormatterInterface: '@Emporiqa\SyliusPlugin\Service\PageFormatter'
+
+    Emporiqa\SyliusPlugin\Service\OrderProvider: ~
+
+    Emporiqa\SyliusPlugin\Service\OrderProviderInterface: '@Emporiqa\SyliusPlugin\Service\OrderProvider'
+
+    Emporiqa\SyliusPlugin\EventSubscriber\ProductEventSubscriber:
+        arguments:
+            $syncEnabled: '%emporiqa.sync.products%'
+
+    Emporiqa\SyliusPlugin\EventListener\PageDoctrineListener:
+        arguments:
+            $pageEntityClasses: '%emporiqa.page_entity_classes%'
+            $syncEnabled: '%emporiqa.sync.pages%'
+
+    Emporiqa\SyliusPlugin\Twig\EmporiqaExtension:
+        arguments:
+            $storeId: '%emporiqa.store_id%'
+            $webhookUrl: '%emporiqa.webhook_url%'
+            $webhookSecret: '%emporiqa.webhook_secret%'
+            $cartEnabled: '%emporiqa.cart.enabled%'
+
+    Emporiqa\SyliusPlugin\Command\SyncProductsCommand:
+        arguments:
+            $enabledLanguages: '%emporiqa.enabled_languages%'
+
+    Emporiqa\SyliusPlugin\Command\SyncPagesCommand:
+        arguments:
+            $pageEntityClasses: '%emporiqa.page_entity_classes%'
+            $enabledLanguages: '%emporiqa.enabled_languages%'
+
+    Emporiqa\SyliusPlugin\Command\SyncAllCommand: ~
+
+    Emporiqa\SyliusPlugin\Command\TestConnectionCommand: ~
+
+    Emporiqa\SyliusPlugin\Controller\OrderTrackingController:
+        arguments:
+            $webhookSecret: '%emporiqa.webhook_secret%'
+        tags: ['controller.service_arguments']
+
+    Emporiqa\SyliusPlugin\Controller\CartController:
+        arguments:
+            $cartContext: '@sylius.context.cart'
+            $orderModifier: '@Sylius\Component\Order\Modifier\OrderModifierInterface'
+            $orderItemQuantityModifier: '@Sylius\Component\Order\Modifier\OrderItemQuantityModifierInterface'
+            $orderItemFactory: '@sylius.factory.order_item'
+            $variantRepository: '@sylius.repository.product_variant'
+            $entityManager: '@doctrine.orm.default_entity_manager'
+        tags: ['controller.service_arguments']
+
+    Emporiqa\SyliusPlugin\Controller\UserTokenController:
+        arguments:
+            $webhookSecret: '%emporiqa.webhook_secret%'
+        tags: ['controller.service_arguments']
+
+    Emporiqa\SyliusPlugin\EventSubscriber\OrderCompleteSubscriber: ~

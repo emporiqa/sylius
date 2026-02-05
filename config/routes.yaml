@@ -1,0 +1,39 @@
+emporiqa_order_tracking:
+    path: /emporiqa/api/order/tracking
+    controller: Emporiqa\SyliusPlugin\Controller\OrderTrackingController::track
+    methods: [POST]
+
+emporiqa_cart_get:
+    path: /emporiqa/api/cart
+    controller: Emporiqa\SyliusPlugin\Controller\CartController::getCart
+    methods: [GET]
+
+emporiqa_cart_add:
+    path: /emporiqa/api/cart/add
+    controller: Emporiqa\SyliusPlugin\Controller\CartController::add
+    methods: [POST]
+
+emporiqa_cart_update:
+    path: /emporiqa/api/cart/update
+    controller: Emporiqa\SyliusPlugin\Controller\CartController::update
+    methods: [POST]
+
+emporiqa_cart_remove:
+    path: /emporiqa/api/cart/remove
+    controller: Emporiqa\SyliusPlugin\Controller\CartController::remove
+    methods: [POST]
+
+emporiqa_cart_clear:
+    path: /emporiqa/api/cart/clear
+    controller: Emporiqa\SyliusPlugin\Controller\CartController::clear
+    methods: [POST]
+
+emporiqa_cart_checkout_url:
+    path: /emporiqa/api/cart/checkout-url
+    controller: Emporiqa\SyliusPlugin\Controller\CartController::checkoutUrl
+    methods: [GET]
+
+emporiqa_user_token:
+    path: /emporiqa/api/user-token
+    controller: Emporiqa\SyliusPlugin\Controller\UserTokenController::getToken
+    methods: [GET]
