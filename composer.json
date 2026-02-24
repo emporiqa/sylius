@@ -1,7 +1,7 @@
 {
     "name": "emporiqa/sylius-plugin",
     "type": "sylius-plugin",
-    "description": "Emporiqa AI Chat integration for Sylius — product sync, cart & checkout, widget embedding, order tracking, and order completion webhooks.",
+    "description": "Integrates Sylius with Emporiqa chat assistant.",
     "license": "MIT",
     "keywords": [
         "sylius",

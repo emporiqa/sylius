@@ -34,7 +34,7 @@ class OrderProvider implements OrderProviderInterface
             $items[] = [
                 'name' => $item->getProductName() ?? $item->getVariantName(),
                 'quantity' => $item->getQuantity(),
-                'price' => $item->getUnitPrice() / 100,
+                'price' => round($item->getUnitPrice() / 100, 2),
             ];
         }
 
@@ -46,17 +46,27 @@ class OrderProvider implements OrderProviderInterface
             'placed_at' => $order->getCheckoutCompletedAt()?->format('c'),
             'items' => $items,
             'shipping' => $shipping,
-            'total' => $order->getTotal() / 100,
+            'total' => round($order->getTotal() / 100, 2),
             'currency' => $order->getCurrencyCode(),
         ];
     }
 
     private function resolveOrderStatus(OrderInterface $order): string
     {
+        // Terminal payment states first — these override everything
+        if ($order->getPaymentState() === OrderPaymentStates::STATE_CANCELLED) {
+            return 'cancelled';
+        }
+
+        if ($order->getPaymentState() === OrderPaymentStates::STATE_REFUNDED) {
+            return 'refunded';
+        }
+
         if ($order->getPaymentState() === OrderPaymentStates::STATE_AWAITING_PAYMENT) {
             return 'pending_payment';
         }
 
+        // Shipping states
         if ($order->getShippingState() === OrderShippingStates::STATE_SHIPPED) {
             return 'shipped';
         }
@@ -67,14 +77,6 @@ class OrderProvider implements OrderProviderInterface
 
         if ($order->getPaymentState() === OrderPaymentStates::STATE_PAID) {
             return 'processing';
-        }
-
-        if ($order->getPaymentState() === OrderPaymentStates::STATE_REFUNDED) {
-            return 'refunded';
-        }
-
-        if ($order->getPaymentState() === OrderPaymentStates::STATE_CANCELLED) {
-            return 'cancelled';
         }
 
         return 'processing';

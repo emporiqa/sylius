@@ -5,10 +5,32 @@
  * when a customer requests cart operations through the chat widget.
  *
  * Uses Emporiqa cart API routes (/emporiqa/api/cart/*).
- * No CSRF token needed — Symfony SameSite cookies protect same-origin JSON APIs.
+ * Includes CSRF token for authenticated users via X-CSRF-Token header.
  */
 (function () {
   'use strict';
+
+  var csrfToken = null;
+
+  /**
+   * Fetches CSRF token from the server. Cached after first fetch.
+   * Retries are handled by resetting csrfToken to null on 403.
+   */
+  async function getCsrfToken() {
+    if (csrfToken !== null) return csrfToken;
+    try {
+      var response = await fetch('/emporiqa/api/csrf-token', { credentials: 'same-origin' });
+      if (response.ok) {
+        var data = await response.json();
+        csrfToken = data.token || '';
+      } else {
+        csrfToken = '';
+      }
+    } catch (e) {
+      csrfToken = '';
+    }
+    return csrfToken;
+  }
 
   /**
    * Extracts the numeric ID from a prefixed identifier.
@@ -58,12 +80,36 @@
   }
 
   async function postJson(url, body) {
-    return fetch(url, {
+    var token = await getCsrfToken();
+    var headers = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['X-CSRF-Token'] = token;
+    }
+
+    var response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: headers,
       credentials: 'same-origin',
       body: body ? JSON.stringify(body) : undefined
     });
+
+    // Retry once with a fresh token on 403 (stale CSRF)
+    if (response.status === 403) {
+      csrfToken = null;
+      token = await getCsrfToken();
+      headers = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['X-CSRF-Token'] = token;
+      }
+      response = await fetch(url, {
+        method: 'POST',
+        headers: headers,
+        credentials: 'same-origin',
+        body: body ? JSON.stringify(body) : undefined
+      });
+    }
+
+    return response;
   }
 
   async function addToCart(items) {
@@ -180,7 +226,10 @@
     }
     var result = parseServerResponse(await response.json());
     if (result.success && result.checkoutUrl) {
-      window.location.href = result.checkoutUrl;
+      var url = result.checkoutUrl;
+      if (url.charAt(0) === '/' || url.indexOf(window.location.origin) === 0) {
+        window.location.href = url;
+      }
     }
     return result;
   }

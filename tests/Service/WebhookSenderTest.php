@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Tests\Service;
 
+use Emporiqa\SyliusPlugin\Event\PreWebhookSendEvent;
 use Emporiqa\SyliusPlugin\Service\WebhookSender;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 
@@ -136,5 +138,71 @@ class WebhookSenderTest extends TestCase
         $this->assertTrue($result['success']);
         $this->assertSame(200, $result['status_code']);
         $this->assertSame('https://example.com/webhook/store-123/', $result['url']);
+    }
+
+    public function testPreWebhookSendEventCanFilterEvents(): void
+    {
+        $dispatcher = $this->createMock(EventDispatcherInterface::class);
+        $dispatcher->method('dispatch')->willReturnCallback(
+            function ($event) {
+                if ($event instanceof PreWebhookSendEvent) {
+                    $event->setEvents([]);
+                }
+                return $event;
+            }
+        );
+
+        $this->httpClient->expects($this->never())->method('request');
+
+        $sender = new WebhookSender(
+            $this->httpClient,
+            'https://example.com/webhook',
+            'store-123',
+            'test-secret',
+            $this->logger,
+            30,
+            $dispatcher,
+        );
+
+        $result = $sender->sendBatch([['type' => 'test', 'data' => []]]);
+        $this->assertTrue($result);
+    }
+
+    public function testPreWebhookSendEventCanModifyEvents(): void
+    {
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(200);
+
+        $dispatcher = $this->createMock(EventDispatcherInterface::class);
+        $dispatcher->method('dispatch')->willReturnCallback(
+            function ($event) {
+                if ($event instanceof PreWebhookSendEvent) {
+                    $event->setEvents([['type' => 'modified', 'data' => ['changed' => true]]]);
+                }
+                return $event;
+            }
+        );
+
+        $this->httpClient
+            ->expects($this->once())
+            ->method('request')
+            ->with('POST', $this->anything(), $this->callback(function (array $options) {
+                $decoded = json_decode($options['body'], true);
+                $this->assertSame('modified', $decoded['events'][0]['type']);
+                return true;
+            }))
+            ->willReturn($response);
+
+        $sender = new WebhookSender(
+            $this->httpClient,
+            'https://example.com/webhook',
+            'store-123',
+            'test-secret',
+            $this->logger,
+            30,
+            $dispatcher,
+        );
+
+        $sender->sendBatch([['type' => 'original', 'data' => []]]);
     }
 }

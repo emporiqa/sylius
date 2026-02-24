@@ -28,6 +28,7 @@ class EmporiqaExtension extends Extension
         $container->setParameter('emporiqa.store_id', $config['store_id']);
         $container->setParameter('emporiqa.webhook_url', $config['webhook_url']);
         $container->setParameter('emporiqa.webhook_secret', $config['webhook_secret']);
+        $container->setParameter('emporiqa.base_url', $config['base_url']);
         $container->setParameter('emporiqa.enabled_languages', $config['enabled_languages']);
         $container->setParameter('emporiqa.sync.products', $config['sync']['products']);
         $container->setParameter('emporiqa.sync.pages', $config['sync']['pages']);

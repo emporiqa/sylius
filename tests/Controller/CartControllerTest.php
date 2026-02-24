@@ -17,10 +17,14 @@ use Sylius\Component\Order\Context\CartNotFoundException;
 use Sylius\Component\Order\Modifier\OrderItemQuantityModifierInterface;
 use Sylius\Component\Order\Modifier\OrderModifierInterface;
 use Sylius\Component\Resource\Factory\FactoryInterface;
+use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\RequestContext;
 use Symfony\Component\Routing\RouterInterface;
+use Symfony\Component\Security\Core\User\UserInterface;
+use Symfony\Component\Security\Csrf\CsrfToken;
+use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 
 class CartControllerTest extends TestCase
 {
@@ -293,7 +297,8 @@ class CartControllerTest extends TestCase
         $this->orderModifier->expects($this->exactly(2))->method('removeFromOrder');
         $this->entityManager->expects($this->once())->method('flush');
 
-        $response = $this->controller->clear();
+        $request = Request::create('/emporiqa/api/cart/clear', 'POST');
+        $response = $this->controller->clear($request);
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
         $data = json_decode($response->getContent(), true);
@@ -306,7 +311,8 @@ class CartControllerTest extends TestCase
     {
         $this->cartContext->method('getCart')->willThrowException(new CartNotFoundException());
 
-        $response = $this->controller->clear();
+        $request = Request::create('/emporiqa/api/cart/clear', 'POST');
+        $response = $this->controller->clear($request);
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
         $data = json_decode($response->getContent(), true);
@@ -347,5 +353,132 @@ class CartControllerTest extends TestCase
         $response = $this->controller->checkoutUrl();
 
         $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+    }
+
+    public function testGetCsrfTokenReturnsEmptyWhenNoCsrfManager(): void
+    {
+        $response = $this->controller->getCsrfToken();
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+        $data = json_decode($response->getContent(), true);
+        $this->assertSame('', $data['token']);
+    }
+
+    public function testGetCsrfTokenHasNoStoreCacheHeader(): void
+    {
+        $csrfManager = $this->createMock(CsrfTokenManagerInterface::class);
+        $csrfManager->method('getToken')->willReturn(new CsrfToken('emporiqa_cart', 'test-token'));
+
+        $controller = new CartController(
+            $this->cartContext,
+            $this->orderModifier,
+            $this->orderItemQuantityModifier,
+            $this->orderItemFactory,
+            $this->variantRepository,
+            $this->entityManager,
+            $this->router,
+            null,
+            null,
+            $csrfManager,
+        );
+
+        $response = $controller->getCsrfToken();
+
+        $cacheControl = $response->headers->get('Cache-Control');
+        $this->assertStringContainsString('no-store', $cacheControl);
+        $this->assertStringContainsString('private', $cacheControl);
+        $data = json_decode($response->getContent(), true);
+        $this->assertSame('test-token', $data['token']);
+    }
+
+    public function testCsrfValidationRejectsInvalidTokenForAuthenticatedUser(): void
+    {
+        $user = $this->createMock(UserInterface::class);
+        $security = $this->createMock(Security::class);
+        $security->method('getUser')->willReturn($user);
+
+        $csrfManager = $this->createMock(CsrfTokenManagerInterface::class);
+        $csrfManager->method('isTokenValid')->willReturn(false);
+
+        $controller = new CartController(
+            $this->cartContext,
+            $this->orderModifier,
+            $this->orderItemQuantityModifier,
+            $this->orderItemFactory,
+            $this->variantRepository,
+            $this->entityManager,
+            $this->router,
+            null,
+            $security,
+            $csrfManager,
+        );
+
+        $body = json_encode(['items' => [['variation_id' => 456, 'quantity' => 1]]]);
+        $request = Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body);
+
+        $response = $controller->add($request);
+
+        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        $data = json_decode($response->getContent(), true);
+        $this->assertSame('Invalid CSRF token', $data['error']);
+    }
+
+    public function testCsrfValidationSkippedForAnonymousUser(): void
+    {
+        $security = $this->createMock(Security::class);
+        $security->method('getUser')->willReturn(null);
+
+        $csrfManager = $this->createMock(CsrfTokenManagerInterface::class);
+        $csrfManager->expects($this->never())->method('isTokenValid');
+
+        $controller = new CartController(
+            $this->cartContext,
+            $this->orderModifier,
+            $this->orderItemQuantityModifier,
+            $this->orderItemFactory,
+            $this->variantRepository,
+            $this->entityManager,
+            $this->router,
+            null,
+            $security,
+            $csrfManager,
+        );
+
+        $this->cartContext->method('getCart')->willThrowException(new CartNotFoundException());
+
+        $request = Request::create('/emporiqa/api/cart/clear', 'POST');
+        $response = $controller->clear($request);
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testAddRejectsNonNumericVariationId(): void
+    {
+        $cart = $this->createMockCart();
+        $this->cartContext->method('getCart')->willReturn($cart);
+
+        $body = json_encode(['items' => [['variation_id' => 'abc', 'quantity' => 1]]]);
+        $request = Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body);
+
+        $response = $this->controller->add($request);
+
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        $data = json_decode($response->getContent(), true);
+        $this->assertSame('Invalid or missing variation_id', $data['error']);
+    }
+
+    public function testAddRejectsMissingVariationId(): void
+    {
+        $cart = $this->createMockCart();
+        $this->cartContext->method('getCart')->willReturn($cart);
+
+        $body = json_encode(['items' => [['quantity' => 1]]]);
+        $request = Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body);
+
+        $response = $this->controller->add($request);
+
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        $data = json_decode($response->getContent(), true);
+        $this->assertSame('Invalid or missing variation_id', $data['error']);
     }
 }

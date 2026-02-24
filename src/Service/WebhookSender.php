@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Service;
 
+use Emporiqa\SyliusPlugin\Event\PreWebhookSendEvent;
 use Psr\Log\LoggerInterface;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 use Symfony\Contracts\HttpClient\Exception\HttpExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
@@ -20,6 +22,7 @@ class WebhookSender implements WebhookSenderInterface
         private string $webhookSecret,
         private ?LoggerInterface $logger = null,
         private int $timeout = self::DEFAULT_TIMEOUT,
+        private ?EventDispatcherInterface $eventDispatcher = null,
     ) {}
 
     public function send(string $event, array $data): bool
@@ -31,6 +34,15 @@ class WebhookSender implements WebhookSenderInterface
     {
         if (empty($events)) {
             return true;
+        }
+
+        if ($this->eventDispatcher) {
+            $preEvent = new PreWebhookSendEvent($events);
+            $this->eventDispatcher->dispatch($preEvent, PreWebhookSendEvent::NAME);
+            $events = $preEvent->getEvents();
+            if (empty($events)) {
+                return true;
+            }
         }
 
         $payload = json_encode(['events' => $events], JSON_THROW_ON_ERROR);

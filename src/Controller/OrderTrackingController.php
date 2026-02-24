@@ -4,16 +4,19 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Controller;
 
+use Emporiqa\SyliusPlugin\Event\OrderTrackingEvent;
 use Emporiqa\SyliusPlugin\Service\OrderProviderInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class OrderTrackingController
 {
     public function __construct(
         private string $webhookSecret,
         private OrderProviderInterface $orderProvider,
+        private ?EventDispatcherInterface $eventDispatcher = null,
     ) {}
 
     public function track(Request $request): JsonResponse
@@ -42,6 +45,12 @@ class OrderTrackingController
         $verificationFields = $payload['verification_fields'] ?? [];
 
         $orderData = $this->orderProvider->findOrder($orderIdentifier, $userId, $verificationFields);
+
+        if ($this->eventDispatcher) {
+            $trackingEvent = new OrderTrackingEvent($orderData, $orderIdentifier, $payload);
+            $this->eventDispatcher->dispatch($trackingEvent, OrderTrackingEvent::NAME);
+            $orderData = $trackingEvent->getOrderData();
+        }
 
         if ($orderData === null) {
             return new JsonResponse(

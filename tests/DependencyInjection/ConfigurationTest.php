@@ -29,6 +29,7 @@ class ConfigurationTest extends TestCase
         $this->assertSame('%env(EMPORIQA_STORE_ID)%', $config['store_id']);
         $this->assertSame('%env(EMPORIQA_WEBHOOK_URL)%', $config['webhook_url']);
         $this->assertSame('test-secret', $config['webhook_secret']);
+        $this->assertSame('', $config['base_url']);
         $this->assertSame(['en_US', 'de_DE'], $config['enabled_languages']);
         $this->assertTrue($config['sync']['products']);
         $this->assertTrue($config['sync']['pages']);
@@ -144,5 +145,17 @@ class ConfigurationTest extends TestCase
         ]);
 
         $this->assertFalse($config['cart']['enabled']);
+    }
+
+    public function testBaseUrlConfiguration(): void
+    {
+        $config = $this->processor->processConfiguration($this->configuration, [
+            [
+                'webhook_secret' => 'test-secret',
+                'base_url' => 'https://myshop.com',
+            ],
+        ]);
+
+        $this->assertSame('https://myshop.com', $config['base_url']);
     }
 }

@@ -21,6 +21,7 @@ class ProductFormatter implements ProductFormatterInterface
     public function __construct(
         private RouterInterface $router,
         private array $enabledLanguages = [],
+        private string $baseUrl = '',
         private ?LoggerInterface $logger = null,
     ) {}
 
@@ -76,7 +77,14 @@ class ProductFormatter implements ProductFormatterInterface
             return $events;
         }
 
-        $channel = $product->getChannels()->first();
+        $channel = $product->getChannels()->first() ?: null;
+        if (!$channel) {
+            $this->logger?->debug('Product has no channels, skipping', [
+                'product_id' => $product->getId(),
+                'locale' => $locale,
+            ]);
+            return $events;
+        }
 
         $taxon = $product->getMainTaxon();
         $category = $taxon?->getTranslation($locale)?->getName();
@@ -177,8 +185,8 @@ class ProductFormatter implements ProductFormatterInterface
         ?string $category = null,
         ?string $brand = null,
     ): array {
-        $channel = $product->getChannels()->first();
-        $channelPricing = $variant->getChannelPricingForChannel($channel);
+        $channel = $product->getChannels()->first() ?: null;
+        $channelPricing = $channel ? $variant->getChannelPricingForChannel($channel) : null;
         $translation = $this->findTranslationForLocale($product->getTranslations(), $locale);
 
         $variantAttributes = [];
@@ -334,10 +342,14 @@ class ProductFormatter implements ProductFormatterInterface
         }
 
         $context = $this->router->getContext();
-        $scheme = $context->getScheme() ?: 'https';
         $host = $context->getHost();
-        $baseUrl = $host ? $scheme . '://' . $host : '';
+        if ($host) {
+            $scheme = $context->getScheme() ?: 'https';
+            $base = $scheme . '://' . $host;
+        } else {
+            $base = rtrim($this->baseUrl, '/');
+        }
 
-        return $baseUrl . '/media/image/' . ltrim($path, '/');
+        return $base . '/media/image/' . ltrim($path, '/');
     }
 }

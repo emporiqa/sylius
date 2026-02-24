@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\EventSubscriber;
 
-use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
+use Emporiqa\SyliusPlugin\Service\WebhookEventQueue;
 use Psr\Log\LoggerInterface;
 use Sylius\Component\Core\Model\OrderInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -12,7 +12,10 @@ use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Workflow\Event\CompletedEvent;
 
 /**
- * Sends order.completed webhook when checkout completes.
+ * Queues order.completed webhook when checkout completes.
+ *
+ * Uses WebhookEventQueue to defer sending until kernel.terminate,
+ * avoiding blocking the checkout response.
  *
  * Requires Symfony Workflow (Sylius 2.x). On Sylius 1.x (Winzou State Machine),
  * the workflow event is never dispatched — the subscriber simply does not fire.
@@ -20,7 +23,7 @@ use Symfony\Component\Workflow\Event\CompletedEvent;
 class OrderCompleteSubscriber implements EventSubscriberInterface
 {
     public function __construct(
-        private WebhookSenderInterface $webhookSender,
+        private WebhookEventQueue $webhookQueue,
         private RequestStack $requestStack,
         private ?LoggerInterface $logger = null,
     ) {}
@@ -77,8 +80,8 @@ class OrderCompleteSubscriber implements EventSubscriberInterface
             'items' => $items,
         ];
 
-        $this->webhookSender->send('order.completed', $data);
+        $this->webhookQueue->queue([['type' => 'order.completed', 'data' => $data]]);
 
-        $this->logger?->info('Sent order.completed webhook for order ' . $data['order_id']);
+        $this->logger?->info('Queued order.completed webhook for order ' . $data['order_id']);
     }
 }

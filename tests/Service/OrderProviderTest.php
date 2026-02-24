@@ -143,4 +143,44 @@ class OrderProviderTest extends TestCase
 
         $this->assertSame('pending_payment', $result['status']);
     }
+
+    public function testCancelledPaymentTakesPriorityOverShippingState(): void
+    {
+        $order = $this->createMock(OrderInterface::class);
+        $order->method('getNumber')->willReturn('000123');
+        $order->method('getTotal')->willReturn(1000);
+        $order->method('getCurrencyCode')->willReturn('USD');
+        $order->method('getCustomer')->willReturn(null);
+        $order->method('getCheckoutCompletedAt')->willReturn(new \DateTime());
+        $order->method('getItems')->willReturn(new ArrayCollection());
+        $order->method('getShipments')->willReturn(new ArrayCollection());
+        $order->method('getPaymentState')->willReturn(OrderPaymentStates::STATE_CANCELLED);
+        $order->method('getShippingState')->willReturn(OrderShippingStates::STATE_PARTIALLY_SHIPPED);
+
+        $this->orderRepository->method('findOneByNumber')->willReturn($order);
+
+        $result = $this->provider->findOrder('000123', null, []);
+
+        $this->assertSame('cancelled', $result['status']);
+    }
+
+    public function testRefundedPaymentTakesPriorityOverShippingState(): void
+    {
+        $order = $this->createMock(OrderInterface::class);
+        $order->method('getNumber')->willReturn('000123');
+        $order->method('getTotal')->willReturn(1000);
+        $order->method('getCurrencyCode')->willReturn('USD');
+        $order->method('getCustomer')->willReturn(null);
+        $order->method('getCheckoutCompletedAt')->willReturn(new \DateTime());
+        $order->method('getItems')->willReturn(new ArrayCollection());
+        $order->method('getShipments')->willReturn(new ArrayCollection());
+        $order->method('getPaymentState')->willReturn(OrderPaymentStates::STATE_REFUNDED);
+        $order->method('getShippingState')->willReturn(OrderShippingStates::STATE_PARTIALLY_SHIPPED);
+
+        $this->orderRepository->method('findOneByNumber')->willReturn($order);
+
+        $result = $this->provider->findOrder('000123', null, []);
+
+        $this->assertSame('refunded', $result['status']);
+    }
 }

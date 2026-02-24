@@ -3,6 +3,11 @@ emporiqa_order_tracking:
     controller: Emporiqa\SyliusPlugin\Controller\OrderTrackingController::track
     methods: [POST]
 
+emporiqa_cart_csrf_token:
+    path: /emporiqa/api/csrf-token
+    controller: Emporiqa\SyliusPlugin\Controller\CartController::getCsrfToken
+    methods: [GET]
+
 emporiqa_cart_get:
     path: /emporiqa/api/cart
     controller: Emporiqa\SyliusPlugin\Controller\CartController::getCart

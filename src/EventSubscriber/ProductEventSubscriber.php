@@ -4,21 +4,24 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\EventSubscriber;
 
+use Emporiqa\SyliusPlugin\Event\PreSyncEvent;
 use Emporiqa\SyliusPlugin\Service\ProductFormatterInterface;
-use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
+use Emporiqa\SyliusPlugin\Service\WebhookEventQueue;
 use Psr\Log\LoggerInterface;
 use Sylius\Bundle\ResourceBundle\Event\ResourceControllerEvent;
 use Sylius\Component\Core\Model\ProductInterface;
 use Sylius\Component\Core\Model\ProductVariantInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class ProductEventSubscriber implements EventSubscriberInterface
 {
     public function __construct(
-        private WebhookSenderInterface $webhookSender,
+        private WebhookEventQueue $webhookQueue,
         private ProductFormatterInterface $formatter,
         private bool $syncEnabled = true,
         private ?LoggerInterface $logger = null,
+        private ?EventDispatcherInterface $eventDispatcher = null,
     ) {}
 
     public static function getSubscribedEvents(): array
@@ -44,16 +47,20 @@ class ProductEventSubscriber implements EventSubscriberInterface
             return;
         }
 
-        $events = $this->formatter->format($product);
-        foreach ($events as &$webhookEvent) {
-            $webhookEvent['type'] = 'product.created';
+        if ($this->isSyncCancelled($product, 'product', 'create')) {
+            return;
         }
-        unset($webhookEvent);
 
         try {
-            $this->webhookSender->sendBatch($events);
+            $events = $this->formatter->format($product);
+            foreach ($events as &$webhookEvent) {
+                $webhookEvent['type'] = 'product.created';
+            }
+            unset($webhookEvent);
+
+            $this->webhookQueue->queue($events);
         } catch (\Throwable $e) {
-            $this->logger?->error('Failed to send product create webhook', [
+            $this->logger?->error('Failed to queue product create webhook', [
                 'product_id' => $product->getId(),
                 'error' => $e->getMessage(),
             ]);
@@ -71,12 +78,15 @@ class ProductEventSubscriber implements EventSubscriberInterface
             return;
         }
 
-        $events = $this->formatter->format($product);
+        if ($this->isSyncCancelled($product, 'product', 'update')) {
+            return;
+        }
 
         try {
-            $this->webhookSender->sendBatch($events);
+            $events = $this->formatter->format($product);
+            $this->webhookQueue->queue($events);
         } catch (\Throwable $e) {
-            $this->logger?->error('Failed to send product update webhook', [
+            $this->logger?->error('Failed to queue product update webhook', [
                 'product_id' => $product->getId(),
                 'error' => $e->getMessage(),
             ]);
@@ -94,12 +104,15 @@ class ProductEventSubscriber implements EventSubscriberInterface
             return;
         }
 
-        $events = $this->formatter->formatForDeletion($product);
+        if ($this->isSyncCancelled($product, 'product', 'delete')) {
+            return;
+        }
 
         try {
-            $this->webhookSender->sendBatch($events);
+            $events = $this->formatter->formatForDeletion($product);
+            $this->webhookQueue->queue($events);
         } catch (\Throwable $e) {
-            $this->logger?->error('Failed to send product delete webhook', [
+            $this->logger?->error('Failed to queue product delete webhook', [
                 'product_id' => $product->getId(),
                 'error' => $e->getMessage(),
             ]);
@@ -122,12 +135,15 @@ class ProductEventSubscriber implements EventSubscriberInterface
             return;
         }
 
-        $events = $this->formatter->format($product);
+        if ($this->isSyncCancelled($variant, 'variation', 'create')) {
+            return;
+        }
 
         try {
-            $this->webhookSender->sendBatch($events);
+            $events = $this->formatter->format($product);
+            $this->webhookQueue->queue($events);
         } catch (\Throwable $e) {
-            $this->logger?->error('Failed to send variant create webhook', [
+            $this->logger?->error('Failed to queue variant create webhook', [
                 'variant_id' => $variant->getId(),
                 'product_id' => $product->getId(),
                 'error' => $e->getMessage(),
@@ -151,12 +167,15 @@ class ProductEventSubscriber implements EventSubscriberInterface
             return;
         }
 
-        $events = $this->formatter->format($product);
+        if ($this->isSyncCancelled($variant, 'variation', 'update')) {
+            return;
+        }
 
         try {
-            $this->webhookSender->sendBatch($events);
+            $events = $this->formatter->format($product);
+            $this->webhookQueue->queue($events);
         } catch (\Throwable $e) {
-            $this->logger?->error('Failed to send variant update webhook', [
+            $this->logger?->error('Failed to queue variant update webhook', [
                 'variant_id' => $variant->getId(),
                 'product_id' => $product->getId(),
                 'error' => $e->getMessage(),
@@ -180,16 +199,31 @@ class ProductEventSubscriber implements EventSubscriberInterface
             return;
         }
 
-        $events = $this->formatter->formatVariantForDeletion($variant, $product);
+        if ($this->isSyncCancelled($variant, 'variation', 'delete')) {
+            return;
+        }
 
         try {
-            $this->webhookSender->sendBatch($events);
+            $events = $this->formatter->formatVariantForDeletion($variant, $product);
+            $this->webhookQueue->queue($events);
         } catch (\Throwable $e) {
-            $this->logger?->error('Failed to send variant delete webhook', [
+            $this->logger?->error('Failed to queue variant delete webhook', [
                 'variant_id' => $variant->getId(),
                 'product_id' => $product->getId(),
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    private function isSyncCancelled(object $entity, string $entityType, string $operation): bool
+    {
+        if (!$this->eventDispatcher) {
+            return false;
+        }
+
+        $event = new PreSyncEvent($entity, $entityType, $operation);
+        $this->eventDispatcher->dispatch($event, PreSyncEvent::NAME);
+
+        return $event->isCancelled();
     }
 }

@@ -114,7 +114,7 @@ class EmporiqaExtensionTest extends TestCase
         $this->assertSame($expectedSig, $parts[1]);
     }
 
-    public function testRenderWidgetOutputsScriptTag(): void
+    public function testRenderWidgetUsesLoaderScript(): void
     {
         $request = $this->createMock(Request::class);
         $request->method('getLocale')->willReturn('en');
@@ -124,9 +124,13 @@ class EmporiqaExtensionTest extends TestCase
         $extension = $this->createExtension('store-123');
         $html = $extension->renderWidget();
 
-        $this->assertStringStartsWith('<script async src="', $html);
-        $this->assertStringEndsWith('"></script>', $html);
-        $this->assertStringContainsString('store_id=store-123', $html);
+        $this->assertStringContainsString('window.emporiqaConfig', $html);
+        $this->assertStringContainsString('"storeId":"store-123"', $html);
+        $this->assertStringContainsString('"cartEnabled":false', $html);
+        $this->assertStringContainsString('emporiqa-widget-loader.js', $html);
+        $this->assertStringNotContainsString('emporiqa-cart.js', $html);
+        // No user token embedded in HTML (cache-safe)
+        $this->assertStringNotContainsString('user_id=', $html);
     }
 
     public function testRenderWidgetReturnsEmptyWhenNoStoreId(): void

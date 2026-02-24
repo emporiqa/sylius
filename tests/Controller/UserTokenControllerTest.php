@@ -67,7 +67,7 @@ class UserTokenControllerTest extends TestCase
         $this->assertSame($expectedSig, $parts[1]);
     }
 
-    public function testResponseHasPrivateCacheHeaders(): void
+    public function testResponseHasNoStoreCacheHeaders(): void
     {
         $user = $this->createMock(UserInterface::class);
         $user->method('getUserIdentifier')->willReturn('test-user');
@@ -78,7 +78,7 @@ class UserTokenControllerTest extends TestCase
 
         $cacheControl = $response->headers->get('Cache-Control');
         $this->assertStringContainsString('private', $cacheControl);
-        $this->assertStringContainsString('max-age=3600', $cacheControl);
+        $this->assertStringContainsString('no-store', $cacheControl);
     }
 
     public function testGenerateUserTokenStaticMethod(): void

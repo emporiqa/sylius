@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\Tests\Controller;
 
 use Emporiqa\SyliusPlugin\Controller\OrderTrackingController;
+use Emporiqa\SyliusPlugin\Event\OrderTrackingEvent;
 use Emporiqa\SyliusPlugin\Service\OrderProviderInterface;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class OrderTrackingControllerTest extends TestCase
 {
@@ -142,5 +144,67 @@ class OrderTrackingControllerTest extends TestCase
         ]);
 
         $this->controller->track($request);
+    }
+
+    public function testOrderTrackingEventCanModifyResponse(): void
+    {
+        $this->orderProvider->method('findOrder')->willReturn([
+            'order_id' => '000123',
+            'status' => 'shipped',
+        ]);
+
+        $dispatcher = $this->createMock(EventDispatcherInterface::class);
+        $dispatcher->method('dispatch')->willReturnCallback(
+            function ($event) {
+                if ($event instanceof OrderTrackingEvent) {
+                    $data = $event->getOrderData();
+                    $data['custom_field'] = 'added_by_listener';
+                    $event->setOrderData($data);
+                }
+                return $event;
+            }
+        );
+
+        $controller = new OrderTrackingController(self::WEBHOOK_SECRET, $this->orderProvider, $dispatcher);
+
+        $request = $this->createSignedRequest([
+            'order_identifier' => '000123',
+            'timestamp' => time(),
+        ]);
+
+        $response = $controller->track($request);
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+        $data = json_decode($response->getContent(), true);
+        $this->assertSame('added_by_listener', $data['custom_field']);
+    }
+
+    public function testOrderTrackingEventCanNullifyResponse(): void
+    {
+        $this->orderProvider->method('findOrder')->willReturn([
+            'order_id' => '000123',
+            'status' => 'shipped',
+        ]);
+
+        $dispatcher = $this->createMock(EventDispatcherInterface::class);
+        $dispatcher->method('dispatch')->willReturnCallback(
+            function ($event) {
+                if ($event instanceof OrderTrackingEvent) {
+                    $event->setOrderData(null);
+                }
+                return $event;
+            }
+        );
+
+        $controller = new OrderTrackingController(self::WEBHOOK_SECRET, $this->orderProvider, $dispatcher);
+
+        $request = $this->createSignedRequest([
+            'order_identifier' => '000123',
+            'timestamp' => time(),
+        ]);
+
+        $response = $controller->track($request);
+
+        $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
     }
 }

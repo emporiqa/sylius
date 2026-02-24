@@ -4,26 +4,35 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Tests\EventSubscriber;
 
+use Emporiqa\SyliusPlugin\Event\PreSyncEvent;
 use Emporiqa\SyliusPlugin\EventSubscriber\ProductEventSubscriber;
 use Emporiqa\SyliusPlugin\Service\ProductFormatterInterface;
+use Emporiqa\SyliusPlugin\Service\WebhookEventQueue;
 use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Sylius\Bundle\ResourceBundle\Event\ResourceControllerEvent;
 use Sylius\Component\Core\Model\ProductInterface;
 use Sylius\Component\Core\Model\ProductVariantInterface;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class ProductEventSubscriberTest extends TestCase
 {
-    private WebhookSenderInterface $webhookSender;
+    private WebhookEventQueue $webhookQueue;
     private ProductFormatterInterface $formatter;
     private LoggerInterface $logger;
+    private EventDispatcherInterface $eventDispatcher;
 
     protected function setUp(): void
     {
-        $this->webhookSender = $this->createMock(WebhookSenderInterface::class);
+        $webhookSender = $this->createMock(WebhookSenderInterface::class);
+        $this->webhookQueue = new WebhookEventQueue($webhookSender);
         $this->formatter = $this->createMock(ProductFormatterInterface::class);
         $this->logger = $this->createMock(LoggerInterface::class);
+        $this->eventDispatcher = $this->createMock(EventDispatcherInterface::class);
+        $this->eventDispatcher->method('dispatch')->willReturnCallback(
+            fn ($event) => $event
+        );
     }
 
     public function testGetSubscribedEvents(): void
@@ -38,7 +47,7 @@ class ProductEventSubscriberTest extends TestCase
         $this->assertArrayHasKey('sylius.product_variant.pre_delete', $events);
     }
 
-    public function testOnProductCreateSendsWebhook(): void
+    public function testOnProductCreateQueuesEventsWithCreatedType(): void
     {
         $product = $this->createMock(ProductInterface::class);
         $product->method('getId')->willReturn(1);
@@ -47,31 +56,28 @@ class ProductEventSubscriberTest extends TestCase
         $event->method('getSubject')->willReturn($product);
 
         $this->formatter->method('format')->willReturn([
-            ['type' => 'product.updated', 'data' => ['id' => 1]],
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
         ]);
 
-        $this->webhookSender
-            ->expects($this->once())
-            ->method('sendBatch')
-            ->with($this->callback(function (array $events) {
-                return $events[0]['type'] === 'product.created';
-            }));
-
-        $subscriber = new ProductEventSubscriber($this->webhookSender, $this->formatter, true, $this->logger);
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
         $subscriber->onProductCreate($event);
+
+        $this->assertTrue($this->webhookQueue->hasPending());
     }
 
     public function testOnProductCreateSkipsWhenSyncDisabled(): void
     {
         $event = $this->createMock(ResourceControllerEvent::class);
 
-        $this->webhookSender->expects($this->never())->method('sendBatch');
+        $this->formatter->expects($this->never())->method('format');
 
-        $subscriber = new ProductEventSubscriber($this->webhookSender, $this->formatter, false, $this->logger);
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, false, $this->logger);
         $subscriber->onProductCreate($event);
+
+        $this->assertFalse($this->webhookQueue->hasPending());
     }
 
-    public function testOnProductUpdateSendsWebhook(): void
+    public function testOnProductUpdateQueuesEvents(): void
     {
         $product = $this->createMock(ProductInterface::class);
 
@@ -79,16 +85,16 @@ class ProductEventSubscriberTest extends TestCase
         $event->method('getSubject')->willReturn($product);
 
         $this->formatter->method('format')->willReturn([
-            ['type' => 'product.updated', 'data' => ['id' => 1]],
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
         ]);
 
-        $this->webhookSender->expects($this->once())->method('sendBatch');
-
-        $subscriber = new ProductEventSubscriber($this->webhookSender, $this->formatter, true, $this->logger);
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
         $subscriber->onProductUpdate($event);
+
+        $this->assertTrue($this->webhookQueue->hasPending());
     }
 
-    public function testOnProductDeleteSendsDeleteEvents(): void
+    public function testOnProductDeleteQueuesDeleteEvents(): void
     {
         $product = $this->createMock(ProductInterface::class);
 
@@ -96,16 +102,16 @@ class ProductEventSubscriberTest extends TestCase
         $event->method('getSubject')->willReturn($product);
 
         $this->formatter->method('formatForDeletion')->willReturn([
-            ['type' => 'product.deleted', 'data' => ['identification_number' => 'product-1']],
+            ['type' => 'product.deleted', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
         ]);
 
-        $this->webhookSender->expects($this->once())->method('sendBatch');
-
-        $subscriber = new ProductEventSubscriber($this->webhookSender, $this->formatter, true, $this->logger);
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
         $subscriber->onProductDelete($event);
+
+        $this->assertTrue($this->webhookQueue->hasPending());
     }
 
-    public function testOnVariantDeleteSendsDeleteEvents(): void
+    public function testOnVariantDeleteQueuesDeleteEvents(): void
     {
         $product = $this->createMock(ProductInterface::class);
         $product->method('getId')->willReturn(1);
@@ -117,16 +123,16 @@ class ProductEventSubscriberTest extends TestCase
         $event->method('getSubject')->willReturn($variant);
 
         $this->formatter->method('formatVariantForDeletion')->willReturn([
-            ['type' => 'product.deleted', 'data' => ['identification_number' => 'variation-10']],
+            ['type' => 'product.deleted', 'data' => ['identification_number' => 'variation-10', 'language' => 'en']],
         ]);
 
-        $this->webhookSender->expects($this->once())->method('sendBatch');
-
-        $subscriber = new ProductEventSubscriber($this->webhookSender, $this->formatter, true, $this->logger);
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
         $subscriber->onVariantDelete($event);
+
+        $this->assertTrue($this->webhookQueue->hasPending());
     }
 
-    public function testLogsErrorOnWebhookFailure(): void
+    public function testLogsErrorOnFormatterFailure(): void
     {
         $product = $this->createMock(ProductInterface::class);
         $product->method('getId')->willReturn(1);
@@ -134,15 +140,11 @@ class ProductEventSubscriberTest extends TestCase
         $event = $this->createMock(ResourceControllerEvent::class);
         $event->method('getSubject')->willReturn($product);
 
-        $this->formatter->method('format')->willReturn([
-            ['type' => 'product.updated', 'data' => []],
-        ]);
-
-        $this->webhookSender->method('sendBatch')->willThrowException(new \RuntimeException('Connection failed'));
+        $this->formatter->method('format')->willThrowException(new \RuntimeException('Format failed'));
 
         $this->logger->expects($this->once())->method('error');
 
-        $subscriber = new ProductEventSubscriber($this->webhookSender, $this->formatter, true, $this->logger);
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
         $subscriber->onProductCreate($event);
     }
 
@@ -151,9 +153,35 @@ class ProductEventSubscriberTest extends TestCase
         $event = $this->createMock(ResourceControllerEvent::class);
         $event->method('getSubject')->willReturn(new \stdClass());
 
-        $this->webhookSender->expects($this->never())->method('sendBatch');
+        $this->formatter->expects($this->never())->method('format');
 
-        $subscriber = new ProductEventSubscriber($this->webhookSender, $this->formatter, true, $this->logger);
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger);
         $subscriber->onProductCreate($event);
+    }
+
+    public function testPreSyncEventCanCancelSync(): void
+    {
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+
+        $event = $this->createMock(ResourceControllerEvent::class);
+        $event->method('getSubject')->willReturn($product);
+
+        $cancellingDispatcher = $this->createMock(EventDispatcherInterface::class);
+        $cancellingDispatcher->method('dispatch')->willReturnCallback(
+            function ($event) {
+                if ($event instanceof PreSyncEvent) {
+                    $event->cancel();
+                }
+                return $event;
+            }
+        );
+
+        $this->formatter->expects($this->never())->method('format');
+
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $cancellingDispatcher);
+        $subscriber->onProductCreate($event);
+
+        $this->assertFalse($this->webhookQueue->hasPending());
     }
 }

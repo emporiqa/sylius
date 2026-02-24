@@ -110,7 +110,7 @@ abstract class AbstractSyncCommand extends Command
                     unset($event);
                 }
 
-                $eventsBatch = array_merge($eventsBatch, $events);
+                array_push($eventsBatch, ...$events);
 
                 if (count($eventsBatch) >= $batchSize) {
                     if (!$dryRun) {

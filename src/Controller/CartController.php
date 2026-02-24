@@ -15,11 +15,14 @@ use Sylius\Component\Order\Context\CartNotFoundException;
 use Sylius\Component\Order\Modifier\OrderItemQuantityModifierInterface;
 use Sylius\Component\Order\Modifier\OrderModifierInterface;
 use Sylius\Component\Resource\Factory\FactoryInterface;
+use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RouterInterface;
+use Symfony\Component\Security\Csrf\CsrfToken;
+use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 
 class CartController
 {
@@ -32,7 +35,22 @@ class CartController
         private EntityManagerInterface $entityManager,
         private RouterInterface $router,
         private ?LoggerInterface $logger = null,
+        private ?Security $security = null,
+        private ?CsrfTokenManagerInterface $csrfTokenManager = null,
     ) {}
+
+    public function getCsrfToken(): JsonResponse
+    {
+        if (!$this->csrfTokenManager) {
+            return new JsonResponse(['token' => '']);
+        }
+
+        $token = $this->csrfTokenManager->getToken('emporiqa_cart')->getValue();
+        $response = new JsonResponse(['token' => $token]);
+        $response->headers->set('Cache-Control', 'private, no-store');
+
+        return $response;
+    }
 
     public function getCart(): JsonResponse
     {
@@ -56,6 +74,10 @@ class CartController
 
     public function add(Request $request): JsonResponse
     {
+        if ($error = $this->validateCsrf($request)) {
+            return $error;
+        }
+
         $body = json_decode($request->getContent(), true);
         if (!is_array($body)) {
             return new JsonResponse(['success' => false, 'error' => 'Invalid JSON body'], Response::HTTP_BAD_REQUEST);
@@ -77,7 +99,10 @@ class CartController
             foreach ($items as $item) {
                 $variantId = $item['variation_id'] ?? null;
                 if (!$variantId || !is_numeric($variantId)) {
-                    continue;
+                    return new JsonResponse(
+                        ['success' => false, 'error' => 'Invalid or missing variation_id'],
+                        Response::HTTP_BAD_REQUEST,
+                    );
                 }
 
                 /** @var ProductVariantInterface|null $variant */
@@ -121,6 +146,10 @@ class CartController
 
     public function update(Request $request): JsonResponse
     {
+        if ($error = $this->validateCsrf($request)) {
+            return $error;
+        }
+
         $body = json_decode($request->getContent(), true);
         if (!is_array($body)) {
             return new JsonResponse(['success' => false, 'error' => 'Invalid JSON body'], Response::HTTP_BAD_REQUEST);
@@ -164,6 +193,10 @@ class CartController
 
     public function remove(Request $request): JsonResponse
     {
+        if ($error = $this->validateCsrf($request)) {
+            return $error;
+        }
+
         $body = json_decode($request->getContent(), true);
         if (!is_array($body)) {
             return new JsonResponse(['success' => false, 'error' => 'Invalid JSON body'], Response::HTTP_BAD_REQUEST);
@@ -202,8 +235,12 @@ class CartController
         }
     }
 
-    public function clear(): JsonResponse
+    public function clear(Request $request): JsonResponse
     {
+        if ($error = $this->validateCsrf($request)) {
+            return $error;
+        }
+
         try {
             /** @var OrderInterface $cart */
             $cart = $this->cartContext->getCart();
@@ -216,7 +253,6 @@ class CartController
         }
 
         try {
-            // Copy to array to avoid modifying the collection during iteration
             foreach ($cart->getItems()->toArray() as $item) {
                 $this->orderModifier->removeFromOrder($cart, $item);
             }
@@ -251,6 +287,27 @@ class CartController
             'success' => true,
             'checkoutUrl' => $this->buildCheckoutUrl($cart),
         ]);
+    }
+
+    /**
+     * Validates CSRF token for authenticated users.
+     * Anonymous users skip CSRF (matches Drupal's approach).
+     */
+    private function validateCsrf(Request $request): ?JsonResponse
+    {
+        if (!$this->security?->getUser() || !$this->csrfTokenManager) {
+            return null;
+        }
+
+        $token = $request->headers->get('X-CSRF-Token', '');
+        if (!$this->csrfTokenManager->isTokenValid(new CsrfToken('emporiqa_cart', $token))) {
+            return new JsonResponse(
+                ['success' => false, 'error' => 'Invalid CSRF token'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        return null;
     }
 
     private function findOrderItemByVariant(OrderInterface $cart, int $variantId): ?OrderItemInterface

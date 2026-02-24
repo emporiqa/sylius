@@ -31,8 +31,7 @@ class UserTokenController
         );
 
         $response = new JsonResponse(['token' => $token]);
-        $response->setPrivate();
-        $response->setMaxAge(3600);
+        $response->headers->set('Cache-Control', 'private, no-store');
 
         return $response;
     }

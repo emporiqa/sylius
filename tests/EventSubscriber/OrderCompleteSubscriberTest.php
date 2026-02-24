@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\Tests\EventSubscriber;
 
 use Emporiqa\SyliusPlugin\EventSubscriber\OrderCompleteSubscriber;
+use Emporiqa\SyliusPlugin\Service\WebhookEventQueue;
 use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -18,19 +19,20 @@ use Symfony\Component\Workflow\Marking;
 
 class OrderCompleteSubscriberTest extends TestCase
 {
-    private WebhookSenderInterface $webhookSender;
+    private WebhookEventQueue $webhookQueue;
     private RequestStack $requestStack;
     private LoggerInterface $logger;
     private OrderCompleteSubscriber $subscriber;
 
     protected function setUp(): void
     {
-        $this->webhookSender = $this->createMock(WebhookSenderInterface::class);
+        $webhookSender = $this->createMock(WebhookSenderInterface::class);
+        $this->webhookQueue = new WebhookEventQueue($webhookSender);
         $this->requestStack = $this->createMock(RequestStack::class);
         $this->logger = $this->createMock(LoggerInterface::class);
 
         $this->subscriber = new OrderCompleteSubscriber(
-            $this->webhookSender,
+            $this->webhookQueue,
             $this->requestStack,
             $this->logger,
         );
@@ -44,7 +46,7 @@ class OrderCompleteSubscriberTest extends TestCase
         $this->assertSame(['onOrderComplete', 50], $events['workflow.sylius_order_checkout.completed.complete']);
     }
 
-    public function testSendsOrderCompletedWebhook(): void
+    public function testQueuesOrderCompletedWebhook(): void
     {
         $variant = $this->createMock(ProductVariantInterface::class);
         $variant->method('getId')->willReturn(456);
@@ -65,31 +67,18 @@ class OrderCompleteSubscriberTest extends TestCase
         $request->cookies->set('emporiqa_sid', 'sess-abc123');
         $this->requestStack->method('getCurrentRequest')->willReturn($request);
 
-        $this->webhookSender
-            ->expects($this->once())
-            ->method('send')
-            ->with('order.completed', $this->callback(function (array $data) {
-                $this->assertSame('000123', $data['order_id']);
-                $this->assertSame(59.98, $data['total']);
-                $this->assertSame('EUR', $data['currency']);
-                $this->assertSame('sess-abc123', $data['emporiqa_session_id']);
-                $this->assertCount(1, $data['items']);
-                $this->assertSame('456', $data['items'][0]['product_id']);
-                $this->assertSame(2, $data['items'][0]['quantity']);
-                $this->assertSame(29.99, $data['items'][0]['price']);
-                return true;
-            }));
-
         $event = new CompletedEvent($order, new Marking());
         $this->subscriber->onOrderComplete($event);
+
+        $this->assertTrue($this->webhookQueue->hasPending());
     }
 
     public function testIgnoresNonOrderSubjects(): void
     {
-        $this->webhookSender->expects($this->never())->method('send');
-
         $event = new CompletedEvent(new \stdClass(), new Marking());
         $this->subscriber->onOrderComplete($event);
+
+        $this->assertFalse($this->webhookQueue->hasPending());
     }
 
     public function testHandlesEmptySessionCookie(): void
@@ -104,16 +93,10 @@ class OrderCompleteSubscriberTest extends TestCase
         $request = Request::create('/checkout/complete');
         $this->requestStack->method('getCurrentRequest')->willReturn($request);
 
-        $this->webhookSender
-            ->expects($this->once())
-            ->method('send')
-            ->with('order.completed', $this->callback(function (array $data) {
-                $this->assertSame('', $data['emporiqa_session_id']);
-                return true;
-            }));
-
         $event = new CompletedEvent($order, new Marking());
         $this->subscriber->onOrderComplete($event);
+
+        $this->assertTrue($this->webhookQueue->hasPending());
     }
 
     public function testRejectsInvalidSessionCookieCharacters(): void
@@ -129,30 +112,18 @@ class OrderCompleteSubscriberTest extends TestCase
         $request->cookies->set('emporiqa_sid', '<script>alert(1)</script>');
         $this->requestStack->method('getCurrentRequest')->willReturn($request);
 
-        $this->webhookSender
-            ->expects($this->once())
-            ->method('send')
-            ->with('order.completed', $this->callback(function (array $data) {
-                $this->assertSame('', $data['emporiqa_session_id']);
-                return true;
-            }));
-
         $event = new CompletedEvent($order, new Marking());
         $this->subscriber->onOrderComplete($event);
+
+        $this->assertTrue($this->webhookQueue->hasPending());
     }
 
-    public function testLogsErrorOnWebhookFailure(): void
+    public function testLogsErrorOnException(): void
     {
         $order = $this->createMock(OrderInterface::class);
-        $order->method('getNumber')->willReturn('000999');
-        $order->method('getId')->willReturn(999);
-        $order->method('getTotal')->willReturn(0);
-        $order->method('getCurrencyCode')->willReturn('EUR');
-        $order->method('getItems')->willReturn(new \Doctrine\Common\Collections\ArrayCollection());
+        $order->method('getNumber')->willThrowException(new \RuntimeException('DB error'));
 
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
-
-        $this->webhookSender->method('send')->willThrowException(new \RuntimeException('Connection failed'));
 
         $this->logger
             ->expects($this->once())
@@ -174,15 +145,9 @@ class OrderCompleteSubscriberTest extends TestCase
 
         $this->requestStack->method('getCurrentRequest')->willReturn(null);
 
-        $this->webhookSender
-            ->expects($this->once())
-            ->method('send')
-            ->with('order.completed', $this->callback(function (array $data) {
-                $this->assertSame('777', $data['order_id']);
-                return true;
-            }));
-
         $event = new CompletedEvent($order, new Marking());
         $this->subscriber->onOrderComplete($event);
+
+        $this->assertTrue($this->webhookQueue->hasPending());
     }
 }

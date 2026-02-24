@@ -12,9 +12,12 @@ services:
 
     Emporiqa\SyliusPlugin\Service\WebhookSenderInterface: '@Emporiqa\SyliusPlugin\Service\WebhookSender'
 
+    Emporiqa\SyliusPlugin\Service\WebhookEventQueue: ~
+
     Emporiqa\SyliusPlugin\Service\ProductFormatter:
         arguments:
             $enabledLanguages: '%emporiqa.enabled_languages%'
+            $baseUrl: '%emporiqa.base_url%'
 
     Emporiqa\SyliusPlugin\Service\ProductFormatterInterface: '@Emporiqa\SyliusPlugin\Service\ProductFormatter'
 
@@ -74,6 +77,10 @@ services:
             $orderItemFactory: '@sylius.factory.order_item'
             $variantRepository: '@sylius.repository.product_variant'
             $entityManager: '@doctrine.orm.default_entity_manager'
+            $router: '@router'
+            $logger: '@logger'
+            $security: '@?Symfony\Bundle\SecurityBundle\Security'
+            $csrfTokenManager: '@?Symfony\Component\Security\Csrf\CsrfTokenManagerInterface'
         tags: ['controller.service_arguments']
 
     Emporiqa\SyliusPlugin\Controller\UserTokenController:
