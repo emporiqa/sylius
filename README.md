@@ -925,7 +925,7 @@ bin/console cache:clear
 
 ## Support
 
-- **Documentation**: [https://emporiqa.com/docs/](https://emporiqa.com/docs/)
+- **Documentation**: [https://emporiqa.com/docs/sylius/](https://emporiqa.com/docs/sylius/)
 - **Issues**: [https://gitlab.com/emporiqa/integrations/sylius/-/issues](https://gitlab.com/emporiqa/integrations/sylius/-/issues)
 - **Email**: support@emporiqa.com
 
