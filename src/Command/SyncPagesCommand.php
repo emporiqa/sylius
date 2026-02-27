@@ -24,9 +24,8 @@ class SyncPagesCommand extends AbstractSyncCommand
         private PageFormatterInterface $formatter,
         private array $pageEntityClasses,
         WebhookSenderInterface $webhookSender,
-        array $enabledLanguages,
     ) {
-        parent::__construct($webhookSender, $enabledLanguages);
+        parent::__construct($webhookSender);
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -53,7 +52,15 @@ class SyncPagesCommand extends AbstractSyncCommand
     protected function fetchEntities(): iterable
     {
         foreach ($this->pageEntityClasses as $class) {
-            yield from $this->entityManager->getRepository($class)->findAll();
+            $query = $this->entityManager
+                ->getRepository($class)
+                ->createQueryBuilder('p')
+                ->getQuery();
+
+            foreach ($query->toIterable() as $entity) {
+                yield $entity;
+                $this->entityManager->detach($entity);
+            }
         }
     }
 
@@ -73,8 +80,8 @@ class SyncPagesCommand extends AbstractSyncCommand
         return $total;
     }
 
-    protected function formatEntityForLanguage(object $entity, string $locale): array
+    protected function formatEntity(object $entity): array
     {
-        return $this->formatter->formatForLanguage($entity, $locale);
+        return $this->formatter->format($entity);
     }
 }

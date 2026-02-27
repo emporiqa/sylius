@@ -15,83 +15,76 @@ class PageFormatter implements PageFormatterInterface
     public function __construct(
         private PageUrlResolverInterface $urlResolver,
         private array $enabledLanguages = [],
+        private array $channelMapping = [],
         private ?LoggerInterface $logger = null,
     ) {}
 
     public function format(PageInterface $page): array
     {
-        $events = [];
-
         try {
             $translations = $page->getTranslations();
         } catch (\Throwable) {
             $this->logger?->warning('Failed to load translations for page', ['page_id' => $page->getId()]);
-            return $events;
+            return [];
         }
 
         if ($translations === null || $translations->isEmpty()) {
             $this->logger?->debug('Page has no translations', ['page_id' => $page->getId()]);
-            return $events;
+            return [];
         }
+
+        // Pages don't have channel associations in Sylius, so we use the store-wide channel key
+        $empChannelKey = '';
+        $channelKeys = [$empChannelKey];
+
+        $titles = [];
+        $contents = [];
+        $links = [];
 
         foreach ($this->enabledLanguages as $locale) {
-            $events = array_merge($events, $this->formatForLanguage($page, $locale));
+            $translation = $this->findTranslationForLocale($translations, $locale);
+            if (!$translation || !$translation->getTitle()) {
+                $this->logger?->debug('Page translation missing for locale', [
+                    'page_id' => $page->getId(),
+                    'locale' => $locale,
+                ]);
+                continue;
+            }
+
+            $lang = $this->getShortLanguageCode($locale);
+
+            $titles[$empChannelKey][$lang] = $translation->getTitle();
+            $contents[$empChannelKey][$lang] = strip_tags($translation->getContent() ?? '');
+            $links[$empChannelKey][$lang] = $this->urlResolver->resolveUrl($page, $locale);
         }
 
-        return $events;
-    }
-
-    public function formatForLanguage(PageInterface $page, string $locale): array
-    {
-        $events = [];
-
-        try {
-            $translations = $page->getTranslations();
-        } catch (\Throwable) {
-            return $events;
+        if (empty($titles)) {
+            return [];
         }
 
-        if ($translations === null || $translations->isEmpty()) {
-            return $events;
-        }
-
-        $translation = $this->findTranslationForLocale($translations, $locale);
-        if (!$translation || !$translation->getTitle()) {
-            $this->logger?->debug('Page translation missing for locale', [
-                'page_id' => $page->getId(),
-                'locale' => $locale,
-            ]);
-            return $events;
-        }
-
-        $events[] = [
-            'type' => 'page.updated',
-            'data' => [
-                'identification_number' => 'page-' . $page->getId(),
-                'name' => $translation->getTitle(),
-                'link' => $this->urlResolver->resolveUrl($page, $locale),
-                'description' => strip_tags($translation->getContent() ?? ''),
-                'language' => $this->getShortLanguageCode($locale),
+        return [
+            [
+                'type' => 'page.updated',
+                'data' => [
+                    'identification_number' => 'page-' . $page->getId(),
+                    'channels' => $channelKeys,
+                    'titles' => $titles,
+                    'contents' => $contents,
+                    'links' => $links,
+                ],
             ],
         ];
-
-        return $events;
     }
 
     public function formatForDeletion(PageInterface $page): array
     {
-        $events = [];
-
-        foreach ($this->enabledLanguages as $locale) {
-            $events[] = [
+        return [
+            [
                 'type' => 'page.deleted',
                 'data' => [
                     'identification_number' => 'page-' . $page->getId(),
-                    'language' => $this->getShortLanguageCode($locale),
                 ],
-            ];
-        }
-
-        return $events;
+            ],
+        ];
     }
 }

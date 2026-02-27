@@ -13,6 +13,8 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class OrderTrackingController
 {
+    private const TIMESTAMP_TOLERANCE = 300;
+
     public function __construct(
         private string $webhookSecret,
         private OrderProviderInterface $orderProvider,
@@ -37,6 +39,14 @@ class OrderTrackingController
             return new JsonResponse(
                 ['error' => 'Invalid request body'],
                 Response::HTTP_BAD_REQUEST,
+            );
+        }
+
+        $drift = abs(time() - (int) $payload['timestamp']);
+        if ($drift > self::TIMESTAMP_TOLERANCE) {
+            return new JsonResponse(
+                ['error' => 'Request expired'],
+                Response::HTTP_UNAUTHORIZED,
             );
         }
 

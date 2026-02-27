@@ -33,6 +33,7 @@ class ConfigurationTest extends TestCase
         $this->assertSame(['en_US', 'de_DE'], $config['enabled_languages']);
         $this->assertTrue($config['sync']['products']);
         $this->assertTrue($config['sync']['pages']);
+        $this->assertSame([], $config['channel_mapping']);
         $this->assertSame([], $config['page_entity_classes']);
         $this->assertTrue($config['order_tracking']['enabled']);
         $this->assertTrue($config['cart']['enabled']);
@@ -145,6 +146,33 @@ class ConfigurationTest extends TestCase
         ]);
 
         $this->assertFalse($config['cart']['enabled']);
+    }
+
+    public function testChannelMappingConfiguration(): void
+    {
+        $config = $this->processor->processConfiguration($this->configuration, [
+            [
+                'webhook_secret' => 'test-secret',
+                'channel_mapping' => [
+                    'FASHION_WEB' => '',
+                    'FASHION_B2B' => 'b2b',
+                ],
+            ],
+        ]);
+
+        $this->assertSame([
+            'FASHION_WEB' => '',
+            'FASHION_B2B' => 'b2b',
+        ], $config['channel_mapping']);
+    }
+
+    public function testChannelMappingDefaultsToEmptyArray(): void
+    {
+        $config = $this->processor->processConfiguration($this->configuration, [
+            ['webhook_secret' => 'test-secret'],
+        ]);
+
+        $this->assertSame([], $config['channel_mapping']);
     }
 
     public function testBaseUrlConfiguration(): void

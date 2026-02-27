@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\Twig;
 
 use Emporiqa\SyliusPlugin\Controller\UserTokenController;
+use Sylius\Component\Channel\Context\ChannelContextInterface;
+use Sylius\Component\Currency\Context\CurrencyContextInterface;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Twig\Extension\AbstractExtension;
@@ -18,7 +20,10 @@ class EmporiqaExtension extends AbstractExtension
         private string $webhookSecret,
         private RequestStack $requestStack,
         private Security $security,
+        private array $channelMapping = [],
         private bool $cartEnabled = true,
+        private ?ChannelContextInterface $channelContext = null,
+        private ?CurrencyContextInterface $currencyContext = null,
     ) {}
 
     public function getFunctions(): array
@@ -32,8 +37,12 @@ class EmporiqaExtension extends AbstractExtension
     }
 
     /**
-     * Renders the widget using the JS loader that fetches user tokens via AJAX.
-     * Safe for full-page caching (no user-specific data in HTML).
+     * Renders the widget with inline config.
+     *
+     * Anonymous pages contain no user-specific data (safe for Varnish/CDN).
+     * Authenticated pages include a signed user token — Symfony already
+     * serves authenticated responses as Cache-Control: private, so this
+     * is safe and avoids an extra AJAX round-trip.
      */
     public function renderWidget(): string
     {
@@ -41,18 +50,7 @@ class EmporiqaExtension extends AbstractExtension
             return '';
         }
 
-        $baseDomain = parse_url($this->webhookUrl, PHP_URL_HOST) ?: 'emporiqa.com';
-        $locale = $this->getShortLocale();
-        $userId = $this->getCustomerId();
-
-        $config = [
-            'storeId' => $this->storeId,
-            'widgetBaseUrl' => 'https://' . $baseDomain . '/chat/embed/',
-            'language' => $locale,
-            'userId' => $userId,
-            'cartEnabled' => false,
-        ];
-
+        $config = $this->buildWidgetConfig(false);
         $configJson = json_encode($config, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR);
 
         $html = '<script>' . "\n";
@@ -63,24 +61,16 @@ class EmporiqaExtension extends AbstractExtension
         return $html;
     }
 
+    /**
+     * Renders the cart-enabled widget with inline config.
+     */
     public function renderCartWidget(): string
     {
         if (empty($this->storeId)) {
             return '';
         }
 
-        $baseDomain = parse_url($this->webhookUrl, PHP_URL_HOST) ?: 'emporiqa.com';
-        $locale = $this->getShortLocale();
-        $userId = $this->getCustomerId();
-
-        $config = [
-            'storeId' => $this->storeId,
-            'widgetBaseUrl' => 'https://' . $baseDomain . '/chat/embed/',
-            'language' => $locale,
-            'userId' => $userId,
-            'cartEnabled' => $this->cartEnabled,
-        ];
-
+        $config = $this->buildWidgetConfig($this->cartEnabled);
         $configJson = json_encode($config, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR);
 
         $html = '<script>' . "\n";
@@ -92,6 +82,31 @@ class EmporiqaExtension extends AbstractExtension
         return $html;
     }
 
+    private function buildWidgetConfig(bool $cartEnabled): array
+    {
+        $baseDomain = parse_url($this->webhookUrl, PHP_URL_HOST) ?: 'emporiqa.com';
+        $user = $this->security->getUser();
+
+        $config = [
+            'storeId' => $this->storeId,
+            'widgetBaseUrl' => 'https://' . $baseDomain . '/chat/embed/',
+            'language' => $this->getShortLocale(),
+            'currency' => $this->getCurrentCurrencyCode(),
+            'channel' => $this->getCurrentChannelKey(),
+            'authenticated' => $user !== null,
+            'cartEnabled' => $cartEnabled,
+        ];
+
+        if ($user !== null && !empty($this->webhookSecret)) {
+            $config['userId'] = UserTokenController::generateUserToken(
+                $user->getUserIdentifier(),
+                $this->webhookSecret,
+            );
+        }
+
+        return $config;
+    }
+
     public function getStoreId(): string
     {
         return $this->storeId;
@@ -99,18 +114,19 @@ class EmporiqaExtension extends AbstractExtension
 
     /**
      * Returns a direct widget URL with embedded user token.
-     * Note: this embeds user-specific data — not safe for cached pages.
-     * Use renderWidget() or renderCartWidget() for cache-safe output.
+     *
+     * @deprecated Use renderWidget() or renderCartWidget() instead.
+     *             This method embeds user-specific data and is not safe for cached pages.
      */
     public function getWidgetUrl(): string
     {
         $baseDomain = parse_url($this->webhookUrl, PHP_URL_HOST) ?: 'emporiqa.com';
 
-        $locale = $this->getShortLocale();
-
         $params = [
             'store_id' => $this->storeId,
-            'language' => $locale,
+            'language' => $this->getShortLocale(),
+            'currency' => $this->getCurrentCurrencyCode(),
+            'channel' => $this->getCurrentChannelKey(),
         ];
 
         $user = $this->security->getUser();
@@ -135,17 +151,40 @@ class EmporiqaExtension extends AbstractExtension
         return $locale;
     }
 
-    private function getCustomerId(): int
+    private function getCurrentCurrencyCode(): string
     {
-        $user = $this->security->getUser();
-        if ($user === null) {
-            return 0;
+        if ($this->currencyContext !== null) {
+            try {
+                return $this->currencyContext->getCurrencyCode();
+            } catch (\Throwable) {
+                // Fall through to channel base currency
+            }
         }
 
-        if (method_exists($user, 'getCustomer') && $user->getCustomer()?->getId()) {
-            return (int) $user->getCustomer()->getId();
+        if ($this->channelContext !== null) {
+            try {
+                return $this->channelContext->getChannel()->getBaseCurrency()?->getCode() ?? '';
+            } catch (\Throwable) {
+                return '';
+            }
         }
 
-        return (int) hexdec(substr(hash('sha256', $user->getUserIdentifier()), 0, 15));
+        return '';
+    }
+
+    private function getCurrentChannelKey(): string
+    {
+        if ($this->channelContext === null) {
+            return '';
+        }
+
+        try {
+            $channel = $this->channelContext->getChannel();
+            $code = $channel->getCode() ?? '';
+
+            return $this->channelMapping[$code] ?? '';
+        } catch (\Throwable) {
+            return '';
+        }
     }
 }

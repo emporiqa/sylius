@@ -17,6 +17,7 @@ services:
     Emporiqa\SyliusPlugin\Service\ProductFormatter:
         arguments:
             $enabledLanguages: '%emporiqa.enabled_languages%'
+            $channelMapping: '%emporiqa.channel_mapping%'
             $baseUrl: '%emporiqa.base_url%'
 
     Emporiqa\SyliusPlugin\Service\ProductFormatterInterface: '@Emporiqa\SyliusPlugin\Service\ProductFormatter'
@@ -28,6 +29,7 @@ services:
     Emporiqa\SyliusPlugin\Service\PageFormatter:
         arguments:
             $enabledLanguages: '%emporiqa.enabled_languages%'
+            $channelMapping: '%emporiqa.channel_mapping%'
 
     Emporiqa\SyliusPlugin\Service\PageFormatterInterface: '@Emporiqa\SyliusPlugin\Service\PageFormatter'
 
@@ -49,16 +51,16 @@ services:
             $storeId: '%emporiqa.store_id%'
             $webhookUrl: '%emporiqa.webhook_url%'
             $webhookSecret: '%emporiqa.webhook_secret%'
+            $channelMapping: '%emporiqa.channel_mapping%'
             $cartEnabled: '%emporiqa.cart.enabled%'
+            $channelContext: '@?Sylius\Component\Channel\Context\ChannelContextInterface'
+            $currencyContext: '@?Sylius\Component\Currency\Context\CurrencyContextInterface'
 
-    Emporiqa\SyliusPlugin\Command\SyncProductsCommand:
-        arguments:
-            $enabledLanguages: '%emporiqa.enabled_languages%'
+    Emporiqa\SyliusPlugin\Command\SyncProductsCommand: ~
 
     Emporiqa\SyliusPlugin\Command\SyncPagesCommand:
         arguments:
             $pageEntityClasses: '%emporiqa.page_entity_classes%'
-            $enabledLanguages: '%emporiqa.enabled_languages%'
 
     Emporiqa\SyliusPlugin\Command\SyncAllCommand: ~
 
@@ -81,6 +83,7 @@ services:
             $logger: '@logger'
             $security: '@?Symfony\Bundle\SecurityBundle\Security'
             $csrfTokenManager: '@?Symfony\Component\Security\Csrf\CsrfTokenManagerInterface'
+            $eventDispatcher: '@?Symfony\Contracts\EventDispatcher\EventDispatcherInterface'
         tags: ['controller.service_arguments']
 
     Emporiqa\SyliusPlugin\Controller\UserTokenController:

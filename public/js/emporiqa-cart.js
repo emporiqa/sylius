@@ -32,16 +32,6 @@
     return csrfToken;
   }
 
-  /**
-   * Extracts the numeric ID from a prefixed identifier.
-   * The Emporiqa SaaS sends IDs like "product-123" or "variation-456".
-   */
-  function extractNumericId(id) {
-    var str = String(id);
-    var match = str.match(/(\d+)$/);
-    return match ? match[1] : str;
-  }
-
   function buildResponse(success, extras) {
     return Object.assign({
       success: success,
@@ -124,7 +114,7 @@
         return buildResponse(false, { error: 'Item missing variation_id or product_id' });
       }
       payload.push({
-        variation_id: extractNumericId(entityId),
+        variation_id: String(entityId),
         quantity: Number(items[i].quantity) || 1
       });
     }
@@ -156,7 +146,7 @@
     }
 
     var response = await postJson('/emporiqa/api/cart/update', {
-      variation_id: extractNumericId(variationId),
+      variation_id: String(variationId),
       quantity: Number(targetItem.quantity) || 1
     });
 
@@ -186,7 +176,7 @@
     }
 
     var response = await postJson('/emporiqa/api/cart/remove', {
-      variation_id: extractNumericId(variationId)
+      variation_id: String(variationId)
     });
 
     if (!response.ok) {

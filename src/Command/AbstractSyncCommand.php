@@ -15,7 +15,6 @@ abstract class AbstractSyncCommand extends Command
 {
     public function __construct(
         protected WebhookSenderInterface $webhookSender,
-        protected array $enabledLanguages,
     ) {
         parent::__construct();
     }
@@ -28,7 +27,7 @@ abstract class AbstractSyncCommand extends Command
 
     abstract protected function getTotalCount(): int;
 
-    abstract protected function formatEntityForLanguage(object $entity, string $locale): array;
+    abstract protected function formatEntity(object $entity): array;
 
     protected function configure(): void
     {
@@ -73,62 +72,40 @@ abstract class AbstractSyncCommand extends Command
             return Command::SUCCESS;
         }
 
-        $overallSuccess = true;
-
-        foreach ($this->enabledLanguages as $locale) {
-            $language = substr($locale, 0, 2);
-            $io->section(sprintf('Syncing %s for language: %s', strtolower($entityLabel), $language));
-
-            $sessionId = null;
-            if (!$noSession && !$dryRun) {
-                $sessionId = $this->startSyncSession($entityName, $language, $io);
-                if (!$sessionId) {
-                    $io->warning(sprintf('Failed to start sync session for %s, continuing without session', $language));
-                }
+        $sessionId = null;
+        if (!$noSession && !$dryRun) {
+            $sessionId = $this->startSyncSession($entityName, $io);
+            if (!$sessionId) {
+                $io->warning('Failed to start sync session, continuing without session');
             }
+        }
 
-            $progressBar = $io->createProgressBar($totalCount);
-            $progressBar->start();
+        $progressBar = $io->createProgressBar($totalCount);
+        $progressBar->start();
 
-            $eventsBatch = [];
-            $successCount = 0;
-            $errorCount = 0;
+        $eventsBatch = [];
+        $successCount = 0;
+        $errorCount = 0;
 
-            foreach ($this->fetchEntities() as $entity) {
-                try {
-                    $events = $this->formatEntityForLanguage($entity, $locale);
-                } catch (\Throwable $e) {
-                    $errorCount++;
-                    $progressBar->advance();
-                    continue;
-                }
-
-                if ($sessionId) {
-                    foreach ($events as &$event) {
-                        $event['data']['sync_session_id'] = $sessionId;
-                    }
-                    unset($event);
-                }
-
-                array_push($eventsBatch, ...$events);
-
-                if (count($eventsBatch) >= $batchSize) {
-                    if (!$dryRun) {
-                        if ($this->webhookSender->sendBatch($eventsBatch)) {
-                            $successCount += count($eventsBatch);
-                        } else {
-                            $errorCount += count($eventsBatch);
-                        }
-                    } else {
-                        $successCount += count($eventsBatch);
-                    }
-                    $eventsBatch = [];
-                }
-
+        foreach ($this->fetchEntities() as $entity) {
+            try {
+                $events = $this->formatEntity($entity);
+            } catch (\Throwable $e) {
+                $errorCount++;
                 $progressBar->advance();
+                continue;
             }
 
-            if (!empty($eventsBatch)) {
+            if ($sessionId) {
+                foreach ($events as &$event) {
+                    $event['data']['sync_session_id'] = $sessionId;
+                }
+                unset($event);
+            }
+
+            array_push($eventsBatch, ...$events);
+
+            if (count($eventsBatch) >= $batchSize) {
                 if (!$dryRun) {
                     if ($this->webhookSender->sendBatch($eventsBatch)) {
                         $successCount += count($eventsBatch);
@@ -138,24 +115,35 @@ abstract class AbstractSyncCommand extends Command
                 } else {
                     $successCount += count($eventsBatch);
                 }
+                $eventsBatch = [];
             }
 
-            $progressBar->finish();
-            $io->newLine();
+            $progressBar->advance();
+        }
 
-            if ($sessionId && !$dryRun) {
-                $this->completeSyncSession($sessionId, $entityName, $language, $io);
-            }
-
-            $io->text(sprintf('  %d events sent, %d errors', $successCount, $errorCount));
-
-            if ($errorCount > 0) {
-                $overallSuccess = false;
+        if (!empty($eventsBatch)) {
+            if (!$dryRun) {
+                if ($this->webhookSender->sendBatch($eventsBatch)) {
+                    $successCount += count($eventsBatch);
+                } else {
+                    $errorCount += count($eventsBatch);
+                }
+            } else {
+                $successCount += count($eventsBatch);
             }
         }
 
+        $progressBar->finish();
         $io->newLine();
-        if ($overallSuccess) {
+
+        if ($sessionId && !$dryRun) {
+            $this->completeSyncSession($sessionId, $entityName, $io);
+        }
+
+        $io->text(sprintf('  %d events sent, %d errors', $successCount, $errorCount));
+
+        $io->newLine();
+        if ($errorCount === 0) {
             $io->success(sprintf('%s sync completed successfully!', $entityLabel));
             return Command::SUCCESS;
         }
@@ -164,16 +152,15 @@ abstract class AbstractSyncCommand extends Command
         return Command::FAILURE;
     }
 
-    private function startSyncSession(string $entityName, string $language, SymfonyStyle $io): ?string
+    private function startSyncSession(string $entityName, SymfonyStyle $io): ?string
     {
-        $sessionId = sprintf('%s-%s-%s', $entityName, $language, bin2hex(random_bytes(8)));
+        $sessionId = sprintf('%s-%s', $entityName, bin2hex(random_bytes(8)));
 
         $event = [
             'type' => 'sync.start',
             'data' => [
                 'session_id' => $sessionId,
                 'entity' => $entityName,
-                'language' => $language,
             ],
         ];
 
@@ -185,14 +172,13 @@ abstract class AbstractSyncCommand extends Command
         return null;
     }
 
-    private function completeSyncSession(string $sessionId, string $entityName, string $language, SymfonyStyle $io): void
+    private function completeSyncSession(string $sessionId, string $entityName, SymfonyStyle $io): void
     {
         $event = [
             'type' => 'sync.complete',
             'data' => [
                 'session_id' => $sessionId,
                 'entity' => $entityName,
-                'language' => $language,
             ],
         ];
 

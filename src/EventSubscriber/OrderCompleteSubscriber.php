@@ -9,16 +9,16 @@ use Psr\Log\LoggerInterface;
 use Sylius\Component\Core\Model\OrderInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
-use Symfony\Component\Workflow\Event\CompletedEvent;
 
 /**
  * Queues order.completed webhook when checkout completes.
  *
- * Uses WebhookEventQueue to defer sending until kernel.terminate,
- * avoiding blocking the checkout response.
+ * Subscribes to both:
+ * - Symfony Workflow events (Sylius 2.x)
+ * - Winzou State Machine events (Sylius 1.x)
  *
- * Requires Symfony Workflow (Sylius 2.x). On Sylius 1.x (Winzou State Machine),
- * the workflow event is never dispatched — the subscriber simply does not fire.
+ * Only the active state machine engine will dispatch events;
+ * the other subscription is simply never triggered.
  */
 class OrderCompleteSubscriber implements EventSubscriberInterface
 {
@@ -31,13 +31,16 @@ class OrderCompleteSubscriber implements EventSubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
+            // Sylius 2.x — Symfony Workflow
             'workflow.sylius_order_checkout.completed.complete' => ['onOrderComplete', 50],
+            // Sylius 1.x — Winzou State Machine
+            'winzou.state_machine.sylius_order_checkout.post_transition.complete' => ['onOrderComplete', 50],
         ];
     }
 
-    public function onOrderComplete(CompletedEvent $event): void
+    public function onOrderComplete(object $event): void
     {
-        $order = $event->getSubject();
+        $order = method_exists($event, 'getSubject') ? $event->getSubject() : null;
         if (!$order instanceof OrderInterface) {
             return;
         }

@@ -19,12 +19,23 @@ class OrderProvider implements OrderProviderInterface
     public function findOrder(string $identifier, ?string $userId, array $verificationFields): ?array
     {
         $order = $this->orderRepository->findOneByNumber($identifier);
+
+        // Sylius pads order numbers with leading zeros by default (e.g. "000000003").
+        // If the exact match fails and the identifier is numeric, retry with zero-padding.
+        if (!$order instanceof OrderInterface && ctype_digit($identifier)) {
+            $padded = str_pad($identifier, 9, '0', STR_PAD_LEFT);
+            if ($padded !== $identifier) {
+                $order = $this->orderRepository->findOneByNumber($padded);
+            }
+        }
+
         if (!$order instanceof OrderInterface) {
             return null;
         }
 
         if (isset($verificationFields['email'])) {
-            if ($order->getCustomer()?->getEmail() !== $verificationFields['email']) {
+            $orderEmail = $order->getCustomer()?->getEmail();
+            if ($orderEmail === null || mb_strtolower($orderEmail) !== mb_strtolower($verificationFields['email'])) {
                 return null;
             }
         }

@@ -31,7 +31,7 @@ class WebhookEventQueueTest extends TestCase
             }));
 
         $this->queue->queue([
-            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
         ]);
 
         $this->assertTrue($this->queue->hasPending());
@@ -57,10 +57,10 @@ class WebhookEventQueueTest extends TestCase
             }));
 
         $this->queue->queue([
-            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
         ]);
         $this->queue->queue([
-            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
         ]);
 
         $this->queue->flush();
@@ -78,10 +78,10 @@ class WebhookEventQueueTest extends TestCase
             }));
 
         $this->queue->queue([
-            ['type' => 'product.created', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
+            ['type' => 'product.created', 'data' => ['identification_number' => 'product-1']],
         ]);
         $this->queue->queue([
-            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
         ]);
 
         $this->queue->flush();
@@ -99,10 +99,10 @@ class WebhookEventQueueTest extends TestCase
             }));
 
         $this->queue->queue([
-            ['type' => 'product.deleted', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
+            ['type' => 'product.deleted', 'data' => ['identification_number' => 'product-1']],
         ]);
         $this->queue->queue([
-            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
         ]);
 
         $this->queue->flush();
@@ -119,8 +119,8 @@ class WebhookEventQueueTest extends TestCase
             }));
 
         $this->queue->queue([
-            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
-            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-2', 'language' => 'en']],
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-2']],
         ]);
 
         $this->queue->flush();
@@ -131,10 +131,9 @@ class WebhookEventQueueTest extends TestCase
         $this->webhookSender->method('sendBatch')->willThrowException(new \RuntimeException('Connection failed'));
 
         $this->queue->queue([
-            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
         ]);
 
-        // Should not throw
         $this->queue->flush();
         $this->assertFalse($this->queue->hasPending());
     }

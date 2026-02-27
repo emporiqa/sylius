@@ -56,7 +56,7 @@ class ProductEventSubscriberTest extends TestCase
         $event->method('getSubject')->willReturn($product);
 
         $this->formatter->method('format')->willReturn([
-            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
         ]);
 
         $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
@@ -85,7 +85,7 @@ class ProductEventSubscriberTest extends TestCase
         $event->method('getSubject')->willReturn($product);
 
         $this->formatter->method('format')->willReturn([
-            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
         ]);
 
         $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
@@ -102,7 +102,7 @@ class ProductEventSubscriberTest extends TestCase
         $event->method('getSubject')->willReturn($product);
 
         $this->formatter->method('formatForDeletion')->willReturn([
-            ['type' => 'product.deleted', 'data' => ['identification_number' => 'product-1', 'language' => 'en']],
+            ['type' => 'product.deleted', 'data' => ['identification_number' => 'product-1']],
         ]);
 
         $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
@@ -123,7 +123,7 @@ class ProductEventSubscriberTest extends TestCase
         $event->method('getSubject')->willReturn($variant);
 
         $this->formatter->method('formatVariantForDeletion')->willReturn([
-            ['type' => 'product.deleted', 'data' => ['identification_number' => 'variation-10', 'language' => 'en']],
+            ['type' => 'product.deleted', 'data' => ['identification_number' => 'variation-10']],
         ]);
 
         $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);

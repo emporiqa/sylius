@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Command;
 
+use Doctrine\ORM\EntityManagerInterface;
 use Emporiqa\SyliusPlugin\Service\ProductFormatterInterface;
 use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
 use Sylius\Component\Core\Repository\ProductRepositoryInterface;
@@ -18,10 +19,10 @@ class SyncProductsCommand extends AbstractSyncCommand
     public function __construct(
         private ProductRepositoryInterface $productRepository,
         private ProductFormatterInterface $formatter,
+        private EntityManagerInterface $entityManager,
         WebhookSenderInterface $webhookSender,
-        array $enabledLanguages,
     ) {
-        parent::__construct($webhookSender, $enabledLanguages);
+        parent::__construct($webhookSender);
     }
 
     protected function getEntityLabel(): string
@@ -36,7 +37,14 @@ class SyncProductsCommand extends AbstractSyncCommand
 
     protected function fetchEntities(): iterable
     {
-        return $this->productRepository->findAll();
+        $query = $this->productRepository
+            ->createQueryBuilder('p')
+            ->getQuery();
+
+        foreach ($query->toIterable() as $product) {
+            yield $product;
+            $this->entityManager->detach($product);
+        }
     }
 
     protected function getTotalCount(): int
@@ -48,8 +56,8 @@ class SyncProductsCommand extends AbstractSyncCommand
             ->getSingleScalarResult();
     }
 
-    protected function formatEntityForLanguage(object $entity, string $locale): array
+    protected function formatEntity(object $entity): array
     {
-        return $this->formatter->formatForLanguage($entity, $locale);
+        return $this->formatter->format($entity);
     }
 }

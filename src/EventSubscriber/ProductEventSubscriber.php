@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\EventSubscriber;
 
+use Emporiqa\SyliusPlugin\Event\PostFormatEvent;
 use Emporiqa\SyliusPlugin\Event\PreSyncEvent;
 use Emporiqa\SyliusPlugin\Service\ProductFormatterInterface;
 use Emporiqa\SyliusPlugin\Service\WebhookEventQueue;
@@ -57,6 +58,7 @@ class ProductEventSubscriber implements EventSubscriberInterface
                 $webhookEvent['type'] = 'product.created';
             }
             unset($webhookEvent);
+            $events = $this->dispatchPostFormat($events, $product);
 
             $this->webhookQueue->queue($events);
         } catch (\Throwable $e) {
@@ -84,6 +86,7 @@ class ProductEventSubscriber implements EventSubscriberInterface
 
         try {
             $events = $this->formatter->format($product);
+            $events = $this->dispatchPostFormat($events, $product);
             $this->webhookQueue->queue($events);
         } catch (\Throwable $e) {
             $this->logger?->error('Failed to queue product update webhook', [
@@ -225,5 +228,17 @@ class ProductEventSubscriber implements EventSubscriberInterface
         $this->eventDispatcher->dispatch($event, PreSyncEvent::NAME);
 
         return $event->isCancelled();
+    }
+
+    private function dispatchPostFormat(array $events, object $entity): array
+    {
+        if (!$this->eventDispatcher) {
+            return $events;
+        }
+
+        $event = new PostFormatEvent($events, $entity);
+        $this->eventDispatcher->dispatch($event, PostFormatEvent::NAME);
+
+        return $event->getFormattedEvents();
     }
 }

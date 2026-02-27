@@ -221,6 +221,10 @@ class CartControllerTest extends TestCase
         $this->cartContext->method('getCart')->willReturn($cart);
         $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
 
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn(456);
+        $this->variantRepository->method('find')->with(456)->willReturn($variant);
+
         $this->orderItemQuantityModifier
             ->expects($this->once())
             ->method('modify')
@@ -256,6 +260,10 @@ class CartControllerTest extends TestCase
         $cart = $this->createMockCart([$orderItem], 0, 'EUR');
         $this->cartContext->method('getCart')->willReturn($cart);
         $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn(456);
+        $this->variantRepository->method('find')->with(456)->willReturn($variant);
 
         $this->orderModifier
             ->expects($this->once())
@@ -452,19 +460,18 @@ class CartControllerTest extends TestCase
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
     }
 
-    public function testAddRejectsNonNumericVariationId(): void
+    public function testAddReturnsNotFoundForUnknownStringVariationId(): void
     {
         $cart = $this->createMockCart();
         $this->cartContext->method('getCart')->willReturn($cart);
+        $this->variantRepository->method('findOneBy')->willReturn(null);
 
-        $body = json_encode(['items' => [['variation_id' => 'abc', 'quantity' => 1]]]);
+        $body = json_encode(['items' => [['variation_id' => 'UNKNOWN_SKU', 'quantity' => 1]]]);
         $request = Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body);
 
         $response = $this->controller->add($request);
 
-        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
-        $data = json_decode($response->getContent(), true);
-        $this->assertSame('Invalid or missing variation_id', $data['error']);
+        $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
     }
 
     public function testAddRejectsMissingVariationId(): void
@@ -479,6 +486,6 @@ class CartControllerTest extends TestCase
 
         $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
         $data = json_decode($response->getContent(), true);
-        $this->assertSame('Invalid or missing variation_id', $data['error']);
+        $this->assertSame('Missing variation_id', $data['error']);
     }
 }

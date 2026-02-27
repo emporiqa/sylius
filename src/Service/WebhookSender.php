@@ -14,6 +14,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 class WebhookSender implements WebhookSenderInterface
 {
     private const DEFAULT_TIMEOUT = 30;
+    private const MAX_RETRIES = 2;
+    private const RETRY_DELAY_MS = 500;
 
     public function __construct(
         private HttpClientInterface $httpClient,
@@ -53,43 +55,53 @@ class WebhookSender implements WebhookSenderInterface
             'X-Webhook-Signature' => hash_hmac('sha256', $payload, $this->webhookSecret),
         ];
 
-        try {
-            $response = $this->httpClient->request('POST', $url, [
-                'headers' => $headers,
-                'body' => $payload,
-                'timeout' => $this->timeout,
-            ]);
-
-            $statusCode = $response->getStatusCode();
-            $success = $statusCode >= 200 && $statusCode < 300;
-
-            if (!$success) {
-                $this->logger?->error('Emporiqa webhook failed', [
-                    'url' => $url,
-                    'status_code' => $statusCode,
-                    'response' => $response->getContent(false),
-                ]);
-            } else {
-                $this->logger?->info('Emporiqa webhook sent successfully', [
-                    'url' => $url,
-                    'events_count' => count($events),
-                ]);
+        $lastError = '';
+        for ($attempt = 0; $attempt <= self::MAX_RETRIES; $attempt++) {
+            if ($attempt > 0) {
+                usleep(self::RETRY_DELAY_MS * 1000 * $attempt);
+                $this->logger?->info('Emporiqa webhook retry', ['attempt' => $attempt + 1, 'url' => $url]);
             }
 
-            return $success;
-        } catch (TransportExceptionInterface $e) {
-            $this->logger?->error('Emporiqa webhook transport error', [
-                'url' => $url,
-                'error' => $e->getMessage(),
-            ]);
-            return false;
-        } catch (HttpExceptionInterface $e) {
-            $this->logger?->error('Emporiqa webhook HTTP error', [
-                'url' => $url,
-                'error' => $e->getMessage(),
-            ]);
-            return false;
+            try {
+                $response = $this->httpClient->request('POST', $url, [
+                    'headers' => $headers,
+                    'body' => $payload,
+                    'timeout' => $this->timeout,
+                ]);
+
+                $statusCode = $response->getStatusCode();
+
+                if ($statusCode >= 200 && $statusCode < 300) {
+                    $this->logger?->info('Emporiqa webhook sent successfully', [
+                        'url' => $url,
+                        'events_count' => count($events),
+                    ]);
+                    return true;
+                }
+
+                // Client errors (4xx) are not retryable
+                if ($statusCode >= 400 && $statusCode < 500) {
+                    $this->logger?->error('Emporiqa webhook failed (not retryable)', [
+                        'url' => $url,
+                        'status_code' => $statusCode,
+                        'response' => $response->getContent(false),
+                    ]);
+                    return false;
+                }
+
+                $lastError = sprintf('HTTP %d: %s', $statusCode, $response->getContent(false));
+            } catch (TransportExceptionInterface | HttpExceptionInterface $e) {
+                $lastError = $e->getMessage();
+            }
         }
+
+        $this->logger?->error('Emporiqa webhook failed after retries', [
+            'url' => $url,
+            'attempts' => self::MAX_RETRIES + 1,
+            'last_error' => $lastError,
+        ]);
+
+        return false;
     }
 
     public function testConnection(): array
@@ -102,7 +114,6 @@ class WebhookSender implements WebhookSenderInterface
                     'data' => [
                         'session_id' => 'connection-test-' . bin2hex(random_bytes(8)),
                         'entity' => 'products',
-                        'language' => 'en',
                     ],
                 ],
             ],

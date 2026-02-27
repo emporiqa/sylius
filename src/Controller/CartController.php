@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\Controller;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Emporiqa\SyliusPlugin\Event\CartOperationEvent;
 use Psr\Log\LoggerInterface;
 use Sylius\Component\Core\Model\OrderInterface;
 use Sylius\Component\Core\Model\OrderItemInterface;
@@ -23,6 +24,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RouterInterface;
 use Symfony\Component\Security\Csrf\CsrfToken;
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class CartController
 {
@@ -37,6 +39,7 @@ class CartController
         private ?LoggerInterface $logger = null,
         private ?Security $security = null,
         private ?CsrfTokenManagerInterface $csrfTokenManager = null,
+        private ?EventDispatcherInterface $eventDispatcher = null,
     ) {}
 
     public function getCsrfToken(): JsonResponse
@@ -88,6 +91,10 @@ class CartController
             return new JsonResponse(['success' => false, 'error' => 'No items provided'], Response::HTTP_BAD_REQUEST);
         }
 
+        if ($cancelResponse = $this->dispatchCartOperation('add', $body)) {
+            return $cancelResponse;
+        }
+
         try {
             /** @var OrderInterface $cart */
             $cart = $this->cartContext->getCart();
@@ -97,26 +104,25 @@ class CartController
 
         try {
             foreach ($items as $item) {
-                $variantId = $item['variation_id'] ?? null;
-                if (!$variantId || !is_numeric($variantId)) {
+                $rawId = $item['variation_id'] ?? null;
+                if (!$rawId) {
                     return new JsonResponse(
-                        ['success' => false, 'error' => 'Invalid or missing variation_id'],
+                        ['success' => false, 'error' => 'Missing variation_id'],
                         Response::HTTP_BAD_REQUEST,
                     );
                 }
 
-                /** @var ProductVariantInterface|null $variant */
-                $variant = $this->variantRepository->find((int) $variantId);
+                $variant = $this->resolveVariant($rawId);
                 if (!$variant) {
                     return new JsonResponse(
-                        ['success' => false, 'error' => 'Variant ' . $variantId . ' not found'],
+                        ['success' => false, 'error' => 'Variant ' . $rawId . ' not found'],
                         Response::HTTP_NOT_FOUND,
                     );
                 }
 
                 $quantity = max(1, (int) ($item['quantity'] ?? 1));
 
-                $existingItem = $this->findOrderItemByVariant($cart, (int) $variantId);
+                $existingItem = $this->findOrderItemByVariant($cart, (int) $variant->getId());
 
                 if ($existingItem) {
                     $newQty = $existingItem->getQuantity() + $quantity;
@@ -155,11 +161,15 @@ class CartController
             return new JsonResponse(['success' => false, 'error' => 'Invalid JSON body'], Response::HTTP_BAD_REQUEST);
         }
 
-        $variantId = $body['variation_id'] ?? null;
+        $rawId = $body['variation_id'] ?? null;
         $quantity = $body['quantity'] ?? null;
 
-        if (!$variantId || !is_numeric($variantId) || $quantity === null) {
-            return new JsonResponse(['success' => false, 'error' => 'Missing or invalid variation_id or quantity'], Response::HTTP_BAD_REQUEST);
+        if (!$rawId || $quantity === null) {
+            return new JsonResponse(['success' => false, 'error' => 'Missing variation_id or quantity'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if ($cancelResponse = $this->dispatchCartOperation('update', $body)) {
+            return $cancelResponse;
         }
 
         try {
@@ -170,7 +180,8 @@ class CartController
         }
 
         try {
-            $orderItem = $this->findOrderItemByVariant($cart, (int) $variantId);
+            $variant = $this->resolveVariant($rawId);
+            $orderItem = $variant ? $this->findOrderItemByVariant($cart, (int) $variant->getId()) : null;
             if (!$orderItem) {
                 return new JsonResponse(['success' => false, 'error' => 'Item not found in cart'], Response::HTTP_NOT_FOUND);
             }
@@ -202,9 +213,13 @@ class CartController
             return new JsonResponse(['success' => false, 'error' => 'Invalid JSON body'], Response::HTTP_BAD_REQUEST);
         }
 
-        $variantId = $body['variation_id'] ?? null;
-        if (!$variantId || !is_numeric($variantId)) {
-            return new JsonResponse(['success' => false, 'error' => 'Missing or invalid variation_id'], Response::HTTP_BAD_REQUEST);
+        $rawId = $body['variation_id'] ?? null;
+        if (!$rawId) {
+            return new JsonResponse(['success' => false, 'error' => 'Missing variation_id'], Response::HTTP_BAD_REQUEST);
+        }
+
+        if ($cancelResponse = $this->dispatchCartOperation('remove', $body)) {
+            return $cancelResponse;
         }
 
         try {
@@ -215,7 +230,8 @@ class CartController
         }
 
         try {
-            $orderItem = $this->findOrderItemByVariant($cart, (int) $variantId);
+            $variant = $this->resolveVariant($rawId);
+            $orderItem = $variant ? $this->findOrderItemByVariant($cart, (int) $variant->getId()) : null;
             if (!$orderItem) {
                 return new JsonResponse(['success' => false, 'error' => 'Item not found in cart'], Response::HTTP_NOT_FOUND);
             }
@@ -239,6 +255,10 @@ class CartController
     {
         if ($error = $this->validateCsrf($request)) {
             return $error;
+        }
+
+        if ($cancelResponse = $this->dispatchCartOperation('clear', [])) {
+            return $cancelResponse;
         }
 
         try {
@@ -308,6 +328,33 @@ class CartController
         }
 
         return null;
+    }
+
+    /**
+     * Resolves a variant from various identifier formats:
+     * Resolves a variant from various identification_number formats:
+     * - "variation-{id}" → variant by Sylius ID
+     * - "product-{id}" → first variant of that product (simple products)
+     * - Numeric (e.g. 24) → variant by Sylius ID
+     * - Any other string (e.g. SKU "PHONE_RED") → variant by code
+     */
+    private function resolveVariant(string|int $rawId): ?ProductVariantInterface
+    {
+        $rawId = (string) $rawId;
+
+        if (preg_match('/^variation-(\d+)$/', $rawId, $matches)) {
+            return $this->variantRepository->find((int) $matches[1]);
+        }
+
+        if (preg_match('/^product-(\d+)$/', $rawId, $matches)) {
+            return $this->variantRepository->findOneBy(['product' => (int) $matches[1]]);
+        }
+
+        if (is_numeric($rawId)) {
+            return $this->variantRepository->find((int) $rawId);
+        }
+
+        return $this->variantRepository->findOneBy(['code' => $rawId]);
     }
 
     private function findOrderItemByVariant(OrderInterface $cart, int $variantId): ?OrderItemInterface
@@ -430,6 +477,26 @@ class CartController
         $baseUrl = $host ? $scheme . '://' . $host : '';
 
         return $baseUrl . '/media/image/' . ltrim($path, '/');
+    }
+
+    private function dispatchCartOperation(string $operation, array $parameters): ?JsonResponse
+    {
+        if (!$this->eventDispatcher) {
+            return null;
+        }
+
+        $event = new CartOperationEvent($operation, $parameters);
+        $this->eventDispatcher->dispatch($event, CartOperationEvent::NAME);
+
+        if ($event->isCancelled()) {
+            $reason = $event->getCancelReason() ?: 'Operation not allowed';
+            return new JsonResponse(
+                ['success' => false, 'error' => $reason],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+
+        return null;
     }
 
     private function emptyCart(): array

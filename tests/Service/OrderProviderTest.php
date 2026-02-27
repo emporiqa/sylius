@@ -31,7 +31,43 @@ class OrderProviderTest extends TestCase
     {
         $this->orderRepository->method('findOneByNumber')->willReturn(null);
 
-        $result = $this->provider->findOrder('000123', null, []);
+        $result = $this->provider->findOrder('CUSTOM-123', null, []);
+
+        $this->assertNull($result);
+    }
+
+    public function testFindOrderTriesZeroPaddedNumberWhenNumericIdentifierNotFound(): void
+    {
+        $customer = $this->createMock(CustomerInterface::class);
+        $customer->method('getEmail')->willReturn('test@example.com');
+
+        $order = $this->createMock(OrderInterface::class);
+        $order->method('getNumber')->willReturn('000000003');
+        $order->method('getTotal')->willReturn(5000);
+        $order->method('getCurrencyCode')->willReturn('EUR');
+        $order->method('getCustomer')->willReturn($customer);
+        $order->method('getCheckoutCompletedAt')->willReturn(new \DateTime());
+        $order->method('getItems')->willReturn(new ArrayCollection());
+        $order->method('getShipments')->willReturn(new ArrayCollection());
+        $order->method('getPaymentState')->willReturn(OrderPaymentStates::STATE_PAID);
+        $order->method('getShippingState')->willReturn(OrderShippingStates::STATE_READY);
+
+        $this->orderRepository->method('findOneByNumber')
+            ->willReturnCallback(function (string $number) use ($order) {
+                return $number === '000000003' ? $order : null;
+            });
+
+        $result = $this->provider->findOrder('3', null, []);
+
+        $this->assertNotNull($result);
+        $this->assertSame('000000003', $result['order_id']);
+    }
+
+    public function testFindOrderSkipsPaddingWhenAlreadyNineDigits(): void
+    {
+        $this->orderRepository->method('findOneByNumber')->willReturn(null);
+
+        $result = $this->provider->findOrder('100000000', null, []);
 
         $this->assertNull($result);
     }

@@ -12,8 +12,8 @@ use Symfony\Component\HttpKernel\KernelEvents;
  * Queues webhook events during an HTTP request and flushes them
  * on kernel.terminate, after the response has been sent to the client.
  *
- * Deduplicates events by (identification_number, language) so that
- * multiple variant updates in one request only produce a single parent sync.
+ * Deduplicates events by identification_number so that multiple variant
+ * updates in one request only produce a single parent sync.
  * Preserves 'created' type over 'updated' when deduplicating.
  */
 class WebhookEventQueue implements EventSubscriberInterface
@@ -39,9 +39,7 @@ class WebhookEventQueue implements EventSubscriberInterface
     public function queue(array $events): void
     {
         foreach ($events as $event) {
-            $identificationNumber = $event['data']['identification_number'] ?? '';
-            $language = $event['data']['language'] ?? '';
-            $key = $identificationNumber . ':' . $language;
+            $key = $event['data']['identification_number'] ?? '';
 
             if (!isset($this->firstTypes[$key])) {
                 $this->firstTypes[$key] = $event['type'];

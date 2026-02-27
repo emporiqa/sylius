@@ -6,6 +6,7 @@ namespace Emporiqa\SyliusPlugin\Service;
 
 use Emporiqa\SyliusPlugin\Trait\TranslationHelperTrait;
 use Psr\Log\LoggerInterface;
+use Sylius\Component\Core\Model\ChannelInterface;
 use Sylius\Component\Core\Model\ProductInterface;
 use Sylius\Component\Core\Model\ProductVariantInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -21,9 +22,343 @@ class ProductFormatter implements ProductFormatterInterface
     public function __construct(
         private RouterInterface $router,
         private array $enabledLanguages = [],
+        private array $channelMapping = [],
         private string $baseUrl = '',
         private ?LoggerInterface $logger = null,
     ) {}
+
+    public function format(ProductInterface $product): array
+    {
+        $channels = $product->getChannels();
+        if ($channels->isEmpty()) {
+            $this->logger?->debug('Product has no channels, skipping', [
+                'product_id' => $product->getId(),
+            ]);
+            return [];
+        }
+
+        $variants = $product->getVariants();
+        $hasVariants = $variants->count() > 1;
+
+        if ($hasVariants) {
+            $events = [];
+            $events[] = $this->formatParentProduct($product);
+
+            foreach ($variants as $variant) {
+                $events[] = $this->formatVariant($variant, $product);
+            }
+
+            return $events;
+        }
+
+        return [$this->formatSimpleProduct($product)];
+    }
+
+    public function formatForDeletion(ProductInterface $product): array
+    {
+        $events = [
+            [
+                'type' => 'product.deleted',
+                'data' => [
+                    'identification_number' => 'product-' . $product->getId(),
+                ],
+            ],
+        ];
+
+        foreach ($product->getVariants() as $variant) {
+            $events[] = [
+                'type' => 'product.deleted',
+                'data' => [
+                    'identification_number' => 'variation-' . $variant->getId(),
+                ],
+            ];
+        }
+
+        return $events;
+    }
+
+    public function formatVariantForDeletion(ProductVariantInterface $variant, ProductInterface $product): array
+    {
+        return [
+            [
+                'type' => 'product.deleted',
+                'data' => [
+                    'identification_number' => 'variation-' . $variant->getId(),
+                ],
+            ],
+        ];
+    }
+
+    private function formatSimpleProduct(ProductInterface $product): array
+    {
+        $variant = $product->getVariants()->first() ?: null;
+
+        $channelKeys = [];
+        $names = [];
+        $descriptions = [];
+        $links = [];
+        $categories = [];
+        $brands = [];
+        $prices = [];
+        $availabilityStatuses = [];
+        $stockQuantities = [];
+        $images = [];
+        $attributes = [];
+
+        foreach ($product->getChannels() as $channel) {
+            $empChannelKey = $this->resolveChannelKey($channel);
+            if (!in_array($empChannelKey, $channelKeys, true)) {
+                $channelKeys[] = $empChannelKey;
+            }
+
+            $channelLocales = $this->getChannelLocales($channel);
+
+            foreach ($channelLocales as $locale) {
+                $translation = $this->findTranslationForLocale($product->getTranslations(), $locale);
+                if (!$translation || !$translation->getName()) {
+                    continue;
+                }
+
+                $lang = $this->getShortLanguageCode($locale);
+
+                $names[$empChannelKey][$lang] = $translation->getName();
+                $descriptions[$empChannelKey][$lang] = $translation->getDescription();
+                $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
+                $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale);
+            }
+
+            $categories[$empChannelKey] = $this->getCategoryNames($product, $channelLocales);
+            $brands[$empChannelKey] = $this->getBrandValue($product) ?? '';
+            $prices[$empChannelKey] = $this->getChannelPrices($channel, $variant);
+            $availabilityStatuses[$empChannelKey] = $this->getAvailabilityStatus($product, $variant);
+            $stockQuantities[$empChannelKey] = $this->getStockQuantity($variant);
+            $images[$empChannelKey] = $this->getProductImages($product);
+        }
+
+        return [
+            'type' => 'product.updated',
+            'data' => [
+                'identification_number' => 'product-' . $product->getId(),
+                'sku' => $variant?->getCode() ?? $product->getCode() ?? '',
+                'channels' => $channelKeys,
+                'names' => $names,
+                'descriptions' => $descriptions,
+                'links' => $links,
+                'categories' => $categories,
+                'brands' => $brands,
+                'prices' => $prices,
+                'availability_statuses' => $availabilityStatuses,
+                'stock_quantities' => $stockQuantities,
+                'images' => $images,
+                'attributes' => $attributes,
+                'parent_sku' => null,
+                'is_parent' => false,
+                'variation_attributes' => [],
+            ],
+        ];
+    }
+
+    private function formatParentProduct(ProductInterface $product): array
+    {
+        $defaultVariant = $product->getVariants()->first() ?: null;
+        $variationAttributes = $this->getVariationAttributes($product);
+
+        $channelKeys = [];
+        $names = [];
+        $descriptions = [];
+        $links = [];
+        $categories = [];
+        $brands = [];
+        $prices = [];
+        $availabilityStatuses = [];
+        $stockQuantities = [];
+        $images = [];
+        $attributes = [];
+
+        foreach ($product->getChannels() as $channel) {
+            $empChannelKey = $this->resolveChannelKey($channel);
+            if (!in_array($empChannelKey, $channelKeys, true)) {
+                $channelKeys[] = $empChannelKey;
+            }
+
+            $channelLocales = $this->getChannelLocales($channel);
+
+            foreach ($channelLocales as $locale) {
+                $translation = $this->findTranslationForLocale($product->getTranslations(), $locale);
+                if (!$translation || !$translation->getName()) {
+                    continue;
+                }
+
+                $lang = $this->getShortLanguageCode($locale);
+
+                $names[$empChannelKey][$lang] = $translation->getName();
+                $descriptions[$empChannelKey][$lang] = $translation->getDescription();
+                $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
+                $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale);
+            }
+
+            $categories[$empChannelKey] = $this->getCategoryNames($product, $channelLocales);
+            $brands[$empChannelKey] = $this->getBrandValue($product) ?? '';
+            $prices[$empChannelKey] = $this->getChannelPrices($channel, $defaultVariant);
+            $availabilityStatuses[$empChannelKey] = $this->getAvailabilityStatus($product);
+            $stockQuantities[$empChannelKey] = null;
+            $images[$empChannelKey] = $this->getProductImages($product);
+        }
+
+        return [
+            'type' => 'product.updated',
+            'data' => [
+                'identification_number' => 'product-' . $product->getId(),
+                'sku' => $product->getCode() ?? '',
+                'channels' => $channelKeys,
+                'names' => $names,
+                'descriptions' => $descriptions,
+                'links' => $links,
+                'categories' => $categories,
+                'brands' => $brands,
+                'prices' => $prices,
+                'availability_statuses' => $availabilityStatuses,
+                'stock_quantities' => $stockQuantities,
+                'images' => $images,
+                'attributes' => $attributes,
+                'parent_sku' => null,
+                'is_parent' => true,
+                'variation_attributes' => $variationAttributes,
+            ],
+        ];
+    }
+
+    private function formatVariant(ProductVariantInterface $variant, ProductInterface $product): array
+    {
+        $channelKeys = [];
+        $names = [];
+        $descriptions = [];
+        $links = [];
+        $categories = [];
+        $brands = [];
+        $prices = [];
+        $availabilityStatuses = [];
+        $stockQuantities = [];
+        $images = [];
+        $attributes = [];
+
+        foreach ($product->getChannels() as $channel) {
+            $empChannelKey = $this->resolveChannelKey($channel);
+            if (!in_array($empChannelKey, $channelKeys, true)) {
+                $channelKeys[] = $empChannelKey;
+            }
+
+            $channelLocales = $this->getChannelLocales($channel);
+
+            foreach ($channelLocales as $locale) {
+                $translation = $this->findTranslationForLocale($product->getTranslations(), $locale);
+                $lang = $this->getShortLanguageCode($locale);
+
+                $variantOptionAttrs = $this->getVariantOptionAttributes($variant, $locale);
+                $baseName = $translation?->getName() ?? $variant->getCode();
+                $variantName = $baseName;
+                if (!empty($variantOptionAttrs)) {
+                    $variantName .= ' - ' . implode(' / ', $variantOptionAttrs);
+                }
+
+                $names[$empChannelKey][$lang] = $variantName;
+                $descriptions[$empChannelKey][$lang] = $translation?->getDescription();
+                $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
+                $attributes[$empChannelKey][$lang] = array_merge(
+                    $this->getProductAttributes($product, $locale),
+                    $variantOptionAttrs,
+                );
+            }
+
+            $categories[$empChannelKey] = $this->getCategoryNames($product, $channelLocales);
+            $brands[$empChannelKey] = $this->getBrandValue($product) ?? '';
+            $prices[$empChannelKey] = $this->getChannelPrices($channel, $variant);
+            $availabilityStatuses[$empChannelKey] = $this->getAvailabilityStatus($product, $variant);
+            $stockQuantities[$empChannelKey] = $this->getStockQuantity($variant);
+            $images[$empChannelKey] = $this->getProductImages($product);
+        }
+
+        return [
+            'type' => 'product.updated',
+            'data' => [
+                'identification_number' => 'variation-' . $variant->getId(),
+                'sku' => $variant->getCode(),
+                'channels' => $channelKeys,
+                'names' => $names,
+                'descriptions' => $descriptions,
+                'links' => $links,
+                'categories' => $categories,
+                'brands' => $brands,
+                'prices' => $prices,
+                'availability_statuses' => $availabilityStatuses,
+                'stock_quantities' => $stockQuantities,
+                'images' => $images,
+                'attributes' => $attributes,
+                'parent_sku' => $product->getCode(),
+                'is_parent' => false,
+                'variation_attributes' => [],
+            ],
+        ];
+    }
+
+    private function resolveChannelKey(ChannelInterface $channel): string
+    {
+        $code = $channel->getCode();
+
+        return $this->channelMapping[$code] ?? '';
+    }
+
+    /**
+     * Returns the enabled locales for a channel, intersected with enabled_languages.
+     * @return string[]
+     */
+    private function getChannelLocales(ChannelInterface $channel): array
+    {
+        $channelLocales = [];
+        foreach ($channel->getLocales() as $locale) {
+            $channelLocales[] = $locale->getCode();
+        }
+
+        if (empty($channelLocales)) {
+            return $this->enabledLanguages;
+        }
+
+        $intersected = array_intersect($this->enabledLanguages, $channelLocales);
+
+        return !empty($intersected) ? array_values($intersected) : $this->enabledLanguages;
+    }
+
+    private function getChannelPrices(ChannelInterface $channel, ?ProductVariantInterface $variant): array
+    {
+        if ($variant === null) {
+            return [];
+        }
+
+        $channelPricing = $variant->getChannelPricingForChannel($channel);
+        if ($channelPricing === null) {
+            return [];
+        }
+
+        $currentPrice = $channelPricing->getPrice() ? $channelPricing->getPrice() / 100 : null;
+        $regularPrice = $channelPricing->getOriginalPrice() ? $channelPricing->getOriginalPrice() / 100 : null;
+        if ($regularPrice === null && $currentPrice !== null) {
+            $regularPrice = $currentPrice;
+        }
+
+        if ($currentPrice === null) {
+            return [];
+        }
+
+        $currencyCode = $channel->getBaseCurrency()?->getCode() ?? 'EUR';
+
+        return [
+            [
+                'currency' => $currencyCode,
+                'current_price' => $currentPrice,
+                'regular_price' => $regularPrice,
+            ],
+        ];
+    }
 
     private function getAvailabilityStatus(ProductInterface $product, ?ProductVariantInterface $variant = null): string
     {
@@ -53,236 +388,51 @@ class ProductFormatter implements ProductFormatterInterface
         return max(0, $variant->getOnHand() - $variant->getOnHold());
     }
 
-    public function format(ProductInterface $product): array
+    private function getCategoryNames(ProductInterface $product, array $locales): array
     {
-        $events = [];
-
-        foreach ($this->enabledLanguages as $locale) {
-            $events = array_merge($events, $this->formatForLanguage($product, $locale));
+        $taxon = $product->getMainTaxon();
+        if ($taxon === null) {
+            return [];
         }
 
-        return $events;
+        $primaryLocale = $locales[0] ?? 'en';
+        $name = $taxon->getTranslation($primaryLocale)?->getName();
+
+        return $name ? [$name] : [];
     }
 
-    public function formatForLanguage(ProductInterface $product, string $locale): array
+    private function getBrandValue(ProductInterface $product): ?string
     {
-        $events = [];
-
-        $translation = $this->findTranslationForLocale($product->getTranslations(), $locale);
-        if (!$translation || !$translation->getName()) {
-            $this->logger?->debug('Product translation missing for locale', [
-                'product_id' => $product->getId(),
-                'locale' => $locale,
-            ]);
-            return $events;
-        }
-
-        $channel = $product->getChannels()->first() ?: null;
-        if (!$channel) {
-            $this->logger?->debug('Product has no channels, skipping', [
-                'product_id' => $product->getId(),
-                'locale' => $locale,
-            ]);
-            return $events;
-        }
-
-        $taxon = $product->getMainTaxon();
-        $category = $taxon?->getTranslation($locale)?->getName();
-
-        $brand = null;
         foreach ($product->getAttributes() as $attributeValue) {
             if (strtolower($attributeValue->getAttribute()?->getCode() ?? '') === 'brand') {
-                $brand = $attributeValue->getValue();
-                break;
+                return $attributeValue->getValue();
             }
         }
 
+        return null;
+    }
+
+    private function getProductImages(ProductInterface $product): array
+    {
         $images = [];
         foreach ($product->getImages() as $image) {
             $images[] = $this->generateImageUrl($image->getPath());
         }
 
-        $variants = $product->getVariants();
-        $hasVariants = $variants->count() > 1;
-
-        $defaultVariant = $product->getVariants()->first();
-        $defaultChannelPricing = $defaultVariant?->getChannelPricingForChannel($channel);
-        $defaultRegularPrice = $defaultChannelPricing?->getOriginalPrice() ? $defaultChannelPricing->getOriginalPrice() / 100 : null;
-        $defaultCurrentPrice = $defaultChannelPricing?->getPrice() ? $defaultChannelPricing->getPrice() / 100 : null;
-        if ($defaultRegularPrice === null && $defaultCurrentPrice !== null) {
-            $defaultRegularPrice = $defaultCurrentPrice;
-        }
-
-        if ($hasVariants) {
-            $variationAttributes = $this->getVariationAttributes($product);
-
-            $events[] = [
-                'type' => 'product.updated',
-                'data' => [
-                    'identification_number' => 'product-' . $product->getId(),
-                    'name' => $translation->getName(),
-                    'sku' => $product->getCode(),
-                    'link' => $this->generateProductUrl($product, $locale),
-                    'category' => $category,
-                    'brand' => $brand,
-                    'regular_price' => $defaultRegularPrice,
-                    'current_price' => $defaultCurrentPrice,
-                    'description' => $translation->getDescription(),
-                    'language' => $this->getShortLanguageCode($locale),
-                    'availability_status' => $this->getAvailabilityStatus($product),
-                    'stock_quantity' => null,
-                    'attributes' => $this->getProductAttributes($product, $locale),
-                    'images' => $images,
-                    'parent_sku' => null,
-                    'is_parent' => true,
-                    'variation_attributes' => $variationAttributes,
-                ],
-            ];
-
-            foreach ($variants as $variant) {
-                $events[] = $this->formatVariant($variant, $product, $locale, $category, $brand);
-            }
-        } else {
-            $variant = $variants->first();
-            $channelPricing = $variant?->getChannelPricingForChannel($channel);
-            $regularPrice = $channelPricing?->getOriginalPrice() ? $channelPricing->getOriginalPrice() / 100 : null;
-            $currentPrice = $channelPricing?->getPrice() ? $channelPricing->getPrice() / 100 : null;
-            if ($regularPrice === null && $currentPrice !== null) {
-                $regularPrice = $currentPrice;
-            }
-
-            $events[] = [
-                'type' => 'product.updated',
-                'data' => [
-                    'identification_number' => 'product-' . $product->getId(),
-                    'name' => $translation->getName(),
-                    'sku' => $variant?->getCode() ?? $product->getCode(),
-                    'link' => $this->generateProductUrl($product, $locale),
-                    'category' => $category,
-                    'brand' => $brand,
-                    'regular_price' => $regularPrice,
-                    'current_price' => $currentPrice,
-                    'description' => $translation->getDescription(),
-                    'language' => $this->getShortLanguageCode($locale),
-                    'availability_status' => $this->getAvailabilityStatus($product, $variant),
-                    'stock_quantity' => $this->getStockQuantity($variant),
-                    'attributes' => $this->getProductAttributes($product, $locale),
-                    'images' => $images,
-                    'parent_sku' => null,
-                    'is_parent' => false,
-                    'variation_attributes' => [],
-                ],
-            ];
-        }
-
-        return $events;
+        return $images;
     }
 
-    public function formatVariant(
-        ProductVariantInterface $variant,
-        ProductInterface $product,
-        string $locale,
-        ?string $category = null,
-        ?string $brand = null,
-    ): array {
-        $channel = $product->getChannels()->first() ?: null;
-        $channelPricing = $channel ? $variant->getChannelPricingForChannel($channel) : null;
-        $translation = $this->findTranslationForLocale($product->getTranslations(), $locale);
-
-        $variantAttributes = [];
+    private function getVariantOptionAttributes(ProductVariantInterface $variant, string $locale): array
+    {
+        $attrs = [];
         foreach ($variant->getOptionValues() as $optionValue) {
             $optionName = $optionValue->getOption()?->getTranslation($locale)?->getName()
                 ?? $optionValue->getOption()?->getCode();
-            $variantAttributes[$optionName] = $optionValue->getTranslation($locale)?->getValue()
+            $attrs[$optionName] = $optionValue->getTranslation($locale)?->getValue()
                 ?? $optionValue->getCode();
         }
 
-        $images = [];
-        foreach ($product->getImages() as $image) {
-            $images[] = $this->generateImageUrl($image->getPath());
-        }
-
-        $regularPrice = $channelPricing?->getOriginalPrice() ? $channelPricing->getOriginalPrice() / 100 : null;
-        $currentPrice = $channelPricing?->getPrice() ? $channelPricing->getPrice() / 100 : null;
-        if ($regularPrice === null && $currentPrice !== null) {
-            $regularPrice = $currentPrice;
-        }
-
-        $variantName = $translation?->getName() ?? $variant->getCode();
-        if (!empty($variantAttributes)) {
-            $variantName .= ' - ' . implode(' / ', $variantAttributes);
-        }
-
-        return [
-            'type' => 'product.updated',
-            'data' => [
-                'identification_number' => 'variation-' . $variant->getId(),
-                'name' => $variantName,
-                'sku' => $variant->getCode(),
-                'link' => $this->generateProductUrl($product, $locale),
-                'category' => $category,
-                'brand' => $brand,
-                'regular_price' => $regularPrice,
-                'current_price' => $currentPrice,
-                'description' => $translation?->getDescription(),
-                'language' => $this->getShortLanguageCode($locale),
-                'availability_status' => $this->getAvailabilityStatus($product, $variant),
-                'stock_quantity' => $this->getStockQuantity($variant),
-                'attributes' => array_merge(
-                    $this->getProductAttributes($product, $locale),
-                    $variantAttributes
-                ),
-                'images' => $images,
-                'parent_sku' => $product->getCode(),
-                'is_parent' => false,
-                'variation_attributes' => [],
-            ],
-        ];
-    }
-
-    public function formatForDeletion(ProductInterface $product): array
-    {
-        $events = [];
-
-        foreach ($this->enabledLanguages as $locale) {
-            $language = $this->getShortLanguageCode($locale);
-            $events[] = [
-                'type' => 'product.deleted',
-                'data' => [
-                    'identification_number' => 'product-' . $product->getId(),
-                    'language' => $language,
-                ],
-            ];
-
-            foreach ($product->getVariants() as $variant) {
-                $events[] = [
-                    'type' => 'product.deleted',
-                    'data' => [
-                        'identification_number' => 'variation-' . $variant->getId(),
-                        'language' => $language,
-                    ],
-                ];
-            }
-        }
-
-        return $events;
-    }
-
-    public function formatVariantForDeletion(ProductVariantInterface $variant, ProductInterface $product): array
-    {
-        $events = [];
-
-        foreach ($this->enabledLanguages as $locale) {
-            $events[] = [
-                'type' => 'product.deleted',
-                'data' => [
-                    'identification_number' => 'variation-' . $variant->getId(),
-                    'language' => $this->getShortLanguageCode($locale),
-                ],
-            ];
-        }
-
-        return $events;
+        return $attrs;
     }
 
     private function getVariationAttributes(ProductInterface $product): array
@@ -291,6 +441,7 @@ class ProductFormatter implements ProductFormatterInterface
         foreach ($product->getOptions() as $option) {
             $attributes[] = $option->getCode();
         }
+
         return $attributes;
     }
 
@@ -304,6 +455,7 @@ class ProductFormatter implements ProductFormatterInterface
                 $attributes[$name] = $attributeValue->getValue();
             }
         }
+
         return $attributes;
     }
 
@@ -312,10 +464,6 @@ class ProductFormatter implements ProductFormatterInterface
         $translation = $this->findTranslationForLocale($product->getTranslations(), $locale);
         $slug = $translation?->getSlug();
         if (!$slug) {
-            $this->logger?->debug('Product missing slug for locale', [
-                'product_id' => $product->getId(),
-                'locale' => $locale,
-            ]);
             return '';
         }
 
@@ -331,6 +479,7 @@ class ProductFormatter implements ProductFormatterInterface
                 'locale' => $locale,
                 'error' => $e->getMessage(),
             ]);
+
             return '';
         }
     }
