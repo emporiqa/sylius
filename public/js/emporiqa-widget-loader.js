@@ -36,5 +36,6 @@
   var script = document.createElement('script');
   script.src = config.widgetBaseUrl + '?' + query;
   script.async = true;
+  script.crossOrigin = 'anonymous';
   document.head.appendChild(script);
 })();
