@@ -30,6 +30,7 @@ class ConfigurationTest extends TestCase
         $this->assertSame('%env(EMPORIQA_WEBHOOK_URL)%', $config['webhook_url']);
         $this->assertSame('test-secret', $config['webhook_secret']);
         $this->assertSame('', $config['base_url']);
+        $this->assertSame('brand', $config['brand_attribute_code']);
         $this->assertSame(['en_US', 'de_DE'], $config['enabled_languages']);
         $this->assertTrue($config['sync']['products']);
         $this->assertTrue($config['sync']['pages']);

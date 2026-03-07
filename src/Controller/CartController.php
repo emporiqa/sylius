@@ -331,7 +331,6 @@ class CartController
     }
 
     /**
-     * Resolves a variant from various identifier formats:
      * Resolves a variant from various identification_number formats:
      * - "variation-{id}" → variant by Sylius ID
      * - "product-{id}" → first variant of that product (simple products)

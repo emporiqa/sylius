@@ -8,11 +8,6 @@ use Doctrine\Common\Collections\Collection;
 
 trait TranslationHelperTrait
 {
-    private function getShortLanguageCode(string $locale): string
-    {
-        return substr($locale, 0, 2);
-    }
-
     /**
      * Finds a translation matching the given locale, falling back to
      * short-code matching (e.g. "en" matches "en_US").

@@ -51,7 +51,7 @@ class PageFormatter implements PageFormatterInterface
                 continue;
             }
 
-            $lang = $this->getShortLanguageCode($locale);
+            $lang = $locale;
 
             $titles[$empChannelKey][$lang] = $translation->getTitle();
             $contents[$empChannelKey][$lang] = strip_tags($translation->getContent() ?? '');

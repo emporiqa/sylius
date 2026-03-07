@@ -19,6 +19,8 @@ services:
             $enabledLanguages: '%emporiqa.enabled_languages%'
             $channelMapping: '%emporiqa.channel_mapping%'
             $baseUrl: '%emporiqa.base_url%'
+            $brandAttributeCode: '%emporiqa.brand_attribute_code%'
+            $channelRepository: '@sylius.repository.channel'
 
     Emporiqa\SyliusPlugin\Service\ProductFormatterInterface: '@Emporiqa\SyliusPlugin\Service\ProductFormatter'
 
@@ -64,7 +66,9 @@ services:
 
     Emporiqa\SyliusPlugin\Command\SyncAllCommand: ~
 
-    Emporiqa\SyliusPlugin\Command\TestConnectionCommand: ~
+    Emporiqa\SyliusPlugin\Command\TestConnectionCommand:
+        arguments:
+            $productRepository: '@sylius.repository.product'
 
     Emporiqa\SyliusPlugin\Controller\OrderTrackingController:
         arguments:

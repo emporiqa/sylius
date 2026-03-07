@@ -90,7 +90,7 @@ class EmporiqaExtension extends AbstractExtension
         $config = [
             'storeId' => $this->storeId,
             'widgetBaseUrl' => 'https://' . $baseDomain . '/chat/embed/',
-            'language' => $this->getShortLocale(),
+            'language' => $this->getLocale(),
             'currency' => $this->getCurrentCurrencyCode(),
             'channel' => $this->getCurrentChannelKey(),
             'authenticated' => $user !== null,
@@ -124,7 +124,7 @@ class EmporiqaExtension extends AbstractExtension
 
         $params = [
             'store_id' => $this->storeId,
-            'language' => $this->getShortLocale(),
+            'language' => $this->getLocale(),
             'currency' => $this->getCurrentCurrencyCode(),
             'channel' => $this->getCurrentChannelKey(),
         ];
@@ -140,15 +140,11 @@ class EmporiqaExtension extends AbstractExtension
         return 'https://' . $baseDomain . '/chat/embed/?' . http_build_query($params);
     }
 
-    private function getShortLocale(): string
+    private function getLocale(): string
     {
         $request = $this->requestStack->getCurrentRequest();
-        $locale = $request?->getLocale() ?? 'en';
-        if (strlen($locale) > 2) {
-            $locale = substr($locale, 0, 2);
-        }
 
-        return $locale;
+        return $request?->getLocale() ?? 'en';
     }
 
     private function getCurrentCurrencyCode(): string

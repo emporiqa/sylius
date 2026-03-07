@@ -11,4 +11,6 @@ interface WebhookSenderInterface
     public function sendBatch(array $events): bool;
 
     public function testConnection(): array;
+
+    public function sendDryRun(array $events): array;
 }

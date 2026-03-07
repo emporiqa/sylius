@@ -140,6 +140,122 @@ class WebhookSenderTest extends TestCase
         $this->assertSame('https://example.com/webhook/store-123/', $result['url']);
     }
 
+    public function testSendDryRunAppendsQueryParam(): void
+    {
+        $dryRunResponse = json_encode([
+            'status' => 'dry_run',
+            'signature' => 'valid',
+            'events_validated' => 1,
+            'events' => [
+                [
+                    'type' => 'product.updated',
+                    'valid' => true,
+                    'identification_number' => 'product-1',
+                    'sku' => 'TEST-001',
+                    'languages_detected' => ['en'],
+                    'channels_detected' => [''],
+                    'fields' => ['names' => true, 'prices' => true],
+                    'is_parent' => false,
+                    'parent_sku' => null,
+                    'warnings' => [],
+                ],
+            ],
+        ]);
+
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $response->method('getContent')->willReturn($dryRunResponse);
+
+        $this->httpClient
+            ->expects($this->once())
+            ->method('request')
+            ->with('POST', 'https://example.com/webhook/store-123/?dry_run=true', $this->anything())
+            ->willReturn($response);
+
+        $sender = $this->createSender();
+        $result = $sender->sendDryRun([['type' => 'product.updated', 'data' => ['sku' => 'TEST']]]);
+
+        $this->assertTrue($result['success']);
+        $this->assertSame(200, $result['status_code']);
+        $this->assertStringContainsString('dry_run=true', $result['url']);
+        $this->assertSame('dry_run', $result['response']['status']);
+        $this->assertTrue($result['response']['events'][0]['valid']);
+    }
+
+    public function testSendDryRunReturnsErrorOn401(): void
+    {
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(401);
+        $response->method('getContent')->willReturn('{"error":"Invalid signature"}');
+
+        $this->httpClient->method('request')->willReturn($response);
+
+        $sender = $this->createSender();
+        $result = $sender->sendDryRun([['type' => 'product.updated', 'data' => []]]);
+
+        $this->assertFalse($result['success']);
+        $this->assertSame(401, $result['status_code']);
+    }
+
+    public function testSendDryRunReturnsErrorOn400(): void
+    {
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(400);
+        $response->method('getContent')->willReturn('{"error":"Invalid payload"}');
+
+        $this->httpClient->method('request')->willReturn($response);
+
+        $sender = $this->createSender();
+        $result = $sender->sendDryRun([['type' => 'product.updated', 'data' => []]]);
+
+        $this->assertFalse($result['success']);
+        $this->assertSame(400, $result['status_code']);
+    }
+
+    public function testSendDryRunHandlesNetworkFailure(): void
+    {
+        $this->httpClient->method('request')->willThrowException(
+            new \Symfony\Component\HttpClient\Exception\TransportException('Connection refused')
+        );
+
+        $sender = $this->createSender();
+        $result = $sender->sendDryRun([['type' => 'product.updated', 'data' => []]]);
+
+        $this->assertFalse($result['success']);
+        $this->assertSame('Connection refused', $result['error']);
+    }
+
+    public function testSendDryRunRejectsEmptyEvents(): void
+    {
+        $this->httpClient->expects($this->never())->method('request');
+
+        $sender = $this->createSender();
+        $result = $sender->sendDryRun([]);
+
+        $this->assertFalse($result['success']);
+    }
+
+    public function testSendDryRunIncludesCorrectSignature(): void
+    {
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $response->method('getContent')->willReturn('{"status":"dry_run"}');
+
+        $this->httpClient
+            ->expects($this->once())
+            ->method('request')
+            ->with('POST', $this->anything(), $this->callback(function (array $options) {
+                $payload = $options['body'];
+                $expectedSignature = hash_hmac('sha256', $payload, 'dry-run-secret');
+                $this->assertSame($expectedSignature, $options['headers']['X-Webhook-Signature']);
+                return true;
+            }))
+            ->willReturn($response);
+
+        $sender = $this->createSender('dry-run-secret');
+        $sender->sendDryRun([['type' => 'product.updated', 'data' => ['sku' => 'X']]]);
+    }
+
     public function testPreWebhookSendEventCanFilterEvents(): void
     {
         $dispatcher = $this->createMock(EventDispatcherInterface::class);

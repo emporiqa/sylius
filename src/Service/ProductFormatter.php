@@ -6,9 +6,11 @@ namespace Emporiqa\SyliusPlugin\Service;
 
 use Emporiqa\SyliusPlugin\Trait\TranslationHelperTrait;
 use Psr\Log\LoggerInterface;
+use Sylius\Component\Channel\Repository\ChannelRepositoryInterface;
 use Sylius\Component\Core\Model\ChannelInterface;
 use Sylius\Component\Core\Model\ProductInterface;
 use Sylius\Component\Core\Model\ProductVariantInterface;
+use Sylius\Component\Taxonomy\Model\TaxonInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RouterInterface;
 
@@ -19,12 +21,16 @@ class ProductFormatter implements ProductFormatterInterface
     private const AVAILABILITY_AVAILABLE = 'available';
     private const AVAILABILITY_OUT_OF_STOCK = 'out_of_stock';
 
+    private ?array $resolvedChannelMapping = null;
+
     public function __construct(
         private RouterInterface $router,
         private array $enabledLanguages = [],
         private array $channelMapping = [],
         private string $baseUrl = '',
+        private string $brandAttributeCode = 'brand',
         private ?LoggerInterface $logger = null,
+        private ?ChannelRepositoryInterface $channelRepository = null,
     ) {}
 
     public function format(ProductInterface $product): array
@@ -119,15 +125,15 @@ class ProductFormatter implements ProductFormatterInterface
                     continue;
                 }
 
-                $lang = $this->getShortLanguageCode($locale);
+                $lang = $locale;
 
                 $names[$empChannelKey][$lang] = $translation->getName();
                 $descriptions[$empChannelKey][$lang] = $translation->getDescription();
                 $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
+                $categories[$empChannelKey][$lang] = $this->getCategoryNamesForLocale($product, $locale);
                 $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale);
             }
 
-            $categories[$empChannelKey] = $this->getCategoryNames($product, $channelLocales);
             $brands[$empChannelKey] = $this->getBrandValue($product) ?? '';
             $prices[$empChannelKey] = $this->getChannelPrices($channel, $variant);
             $availabilityStatuses[$empChannelKey] = $this->getAvailabilityStatus($product, $variant);
@@ -153,7 +159,7 @@ class ProductFormatter implements ProductFormatterInterface
                 'attributes' => $attributes,
                 'parent_sku' => null,
                 'is_parent' => false,
-                'variation_attributes' => [],
+                'variation_attributes' => new \stdClass(),
             ],
         ];
     }
@@ -161,7 +167,6 @@ class ProductFormatter implements ProductFormatterInterface
     private function formatParentProduct(ProductInterface $product): array
     {
         $defaultVariant = $product->getVariants()->first() ?: null;
-        $variationAttributes = $this->getVariationAttributes($product);
 
         $channelKeys = [];
         $names = [];
@@ -174,6 +179,7 @@ class ProductFormatter implements ProductFormatterInterface
         $stockQuantities = [];
         $images = [];
         $attributes = [];
+        $variationAttributes = [];
 
         foreach ($product->getChannels() as $channel) {
             $empChannelKey = $this->resolveChannelKey($channel);
@@ -189,15 +195,16 @@ class ProductFormatter implements ProductFormatterInterface
                     continue;
                 }
 
-                $lang = $this->getShortLanguageCode($locale);
+                $lang = $locale;
 
                 $names[$empChannelKey][$lang] = $translation->getName();
                 $descriptions[$empChannelKey][$lang] = $translation->getDescription();
                 $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
+                $categories[$empChannelKey][$lang] = $this->getCategoryNamesForLocale($product, $locale);
                 $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale);
+                $variationAttributes[$empChannelKey][$lang] = $this->getVariationAttributeNames($product, $locale);
             }
 
-            $categories[$empChannelKey] = $this->getCategoryNames($product, $channelLocales);
             $brands[$empChannelKey] = $this->getBrandValue($product) ?? '';
             $prices[$empChannelKey] = $this->getChannelPrices($channel, $defaultVariant);
             $availabilityStatuses[$empChannelKey] = $this->getAvailabilityStatus($product);
@@ -252,7 +259,7 @@ class ProductFormatter implements ProductFormatterInterface
 
             foreach ($channelLocales as $locale) {
                 $translation = $this->findTranslationForLocale($product->getTranslations(), $locale);
-                $lang = $this->getShortLanguageCode($locale);
+                $lang = $locale;
 
                 $variantOptionAttrs = $this->getVariantOptionAttributes($variant, $locale);
                 $baseName = $translation?->getName() ?? $variant->getCode();
@@ -264,13 +271,13 @@ class ProductFormatter implements ProductFormatterInterface
                 $names[$empChannelKey][$lang] = $variantName;
                 $descriptions[$empChannelKey][$lang] = $translation?->getDescription();
                 $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
+                $categories[$empChannelKey][$lang] = $this->getCategoryNamesForLocale($product, $locale);
                 $attributes[$empChannelKey][$lang] = array_merge(
                     $this->getProductAttributes($product, $locale),
                     $variantOptionAttrs,
                 );
             }
 
-            $categories[$empChannelKey] = $this->getCategoryNames($product, $channelLocales);
             $brands[$empChannelKey] = $this->getBrandValue($product) ?? '';
             $prices[$empChannelKey] = $this->getChannelPrices($channel, $variant);
             $availabilityStatuses[$empChannelKey] = $this->getAvailabilityStatus($product, $variant);
@@ -296,16 +303,61 @@ class ProductFormatter implements ProductFormatterInterface
                 'attributes' => $attributes,
                 'parent_sku' => $product->getCode(),
                 'is_parent' => false,
-                'variation_attributes' => [],
+                'variation_attributes' => new \stdClass(),
             ],
         ];
     }
 
     private function resolveChannelKey(ChannelInterface $channel): string
     {
-        $code = $channel->getCode();
+        $mapping = $this->getChannelMapping();
 
-        return $this->channelMapping[$code] ?? '';
+        return $mapping[$channel->getCode()] ?? '';
+    }
+
+    private function getChannelMapping(): array
+    {
+        if ($this->resolvedChannelMapping !== null) {
+            return $this->resolvedChannelMapping;
+        }
+
+        // Explicit mapping configured — use it
+        if (!empty($this->channelMapping)) {
+            $this->resolvedChannelMapping = $this->channelMapping;
+            return $this->resolvedChannelMapping;
+        }
+
+        // Auto-detect from all store channels
+        if ($this->channelRepository === null) {
+            $this->resolvedChannelMapping = [];
+            return $this->resolvedChannelMapping;
+        }
+
+        $channels = $this->channelRepository->findAll();
+        if (count($channels) <= 1) {
+            // Single channel (or none) — map everything to default
+            $this->resolvedChannelMapping = [];
+            return $this->resolvedChannelMapping;
+        }
+
+        // Multiple channels: first → "", rest → lowercased code
+        $mapping = [];
+        $first = true;
+        foreach ($channels as $ch) {
+            $code = $ch->getCode();
+            if ($first) {
+                $mapping[$code] = '';
+                $first = false;
+            } else {
+                $mapping[$code] = strtolower($code);
+            }
+        }
+
+        $this->resolvedChannelMapping = $mapping;
+
+        $this->logger?->info('Emporiqa: auto-detected channel mapping', ['mapping' => $mapping]);
+
+        return $this->resolvedChannelMapping;
     }
 
     /**
@@ -351,13 +403,18 @@ class ProductFormatter implements ProductFormatterInterface
 
         $currencyCode = $channel->getBaseCurrency()?->getCode() ?? 'EUR';
 
-        return [
-            [
-                'currency' => $currencyCode,
-                'current_price' => $currentPrice,
-                'regular_price' => $regularPrice,
-            ],
+        $priceData = [
+            'currency' => $currencyCode,
+            'current_price' => $currentPrice,
+            'regular_price' => $regularPrice,
         ];
+
+        // Sylius 1.x/2.x: minimumPrice often represents price floor / ex-tax price
+        if (method_exists($channelPricing, 'getMinimumPrice') && $channelPricing->getMinimumPrice()) {
+            $priceData['price_excl_tax'] = $channelPricing->getMinimumPrice() / 100;
+        }
+
+        return [$priceData];
     }
 
     private function getAvailabilityStatus(ProductInterface $product, ?ProductVariantInterface $variant = null): string
@@ -388,23 +445,60 @@ class ProductFormatter implements ProductFormatterInterface
         return max(0, $variant->getOnHand() - $variant->getOnHold());
     }
 
-    private function getCategoryNames(ProductInterface $product, array $locales): array
+    private function getCategoryNamesForLocale(ProductInterface $product, string $locale): array
     {
-        $taxon = $product->getMainTaxon();
-        if ($taxon === null) {
-            return [];
+        $categories = [];
+
+        $mainTaxon = $product->getMainTaxon();
+        if ($mainTaxon !== null) {
+            $path = $this->buildTaxonPath($mainTaxon, $locale);
+            if ($path !== '') {
+                $categories[] = $path;
+            }
         }
 
-        $primaryLocale = $locales[0] ?? 'en';
-        $name = $taxon->getTranslation($primaryLocale)?->getName();
+        if (method_exists($product, 'getProductTaxons')) {
+            foreach ($product->getProductTaxons() as $productTaxon) {
+                $taxon = $productTaxon->getTaxon();
+                if ($taxon === null || $taxon === $mainTaxon) {
+                    continue;
+                }
+                $path = $this->buildTaxonPath($taxon, $locale);
+                if ($path !== '' && !in_array($path, $categories, true)) {
+                    $categories[] = $path;
+                }
+            }
+        }
 
-        return $name ? [$name] : [];
+        return $categories;
+    }
+
+    private function buildTaxonPath(TaxonInterface $taxon, string $locale): string
+    {
+        $ancestors = [];
+        $current = $taxon;
+
+        while ($current !== null) {
+            // Skip invisible root containers (root taxons that are ancestors, not the assigned taxon itself)
+            if ($current->isRoot() && $current !== $taxon) {
+                break;
+            }
+            $name = $current->getTranslation($locale)?->getName();
+            if ($name) {
+                $ancestors[] = $name;
+            }
+            $current = $current->getParent();
+        }
+
+        return implode(' > ', array_reverse($ancestors));
     }
 
     private function getBrandValue(ProductInterface $product): ?string
     {
+        $targetCode = strtolower($this->brandAttributeCode);
+
         foreach ($product->getAttributes() as $attributeValue) {
-            if (strtolower($attributeValue->getAttribute()?->getCode() ?? '') === 'brand') {
+            if (strtolower($attributeValue->getAttribute()?->getCode() ?? '') === $targetCode) {
                 return $attributeValue->getValue();
             }
         }
@@ -435,11 +529,12 @@ class ProductFormatter implements ProductFormatterInterface
         return $attrs;
     }
 
-    private function getVariationAttributes(ProductInterface $product): array
+    private function getVariationAttributeNames(ProductInterface $product, string $locale): array
     {
         $attributes = [];
         foreach ($product->getOptions() as $option) {
-            $attributes[] = $option->getCode();
+            $attributes[] = $option->getTranslation($locale)?->getName()
+                ?? $option->getCode();
         }
 
         return $attributes;

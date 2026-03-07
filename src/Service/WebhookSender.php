@@ -104,6 +104,46 @@ class WebhookSender implements WebhookSenderInterface
         return false;
     }
 
+    public function sendDryRun(array $events): array
+    {
+        if (empty($events)) {
+            return ['success' => false, 'error' => 'No events to send'];
+        }
+
+        $payload = json_encode(['events' => $events], JSON_THROW_ON_ERROR);
+        $url = rtrim($this->webhookUrl, '/') . '/' . $this->storeId . '/?dry_run=true';
+
+        $headers = [
+            'Content-Type' => 'application/json',
+            'X-Webhook-Signature' => hash_hmac('sha256', $payload, $this->webhookSecret),
+        ];
+
+        try {
+            $response = $this->httpClient->request('POST', $url, [
+                'headers' => $headers,
+                'body' => $payload,
+                'timeout' => $this->timeout,
+            ]);
+
+            $statusCode = $response->getStatusCode();
+            $body = $response->getContent(false);
+            $decoded = json_decode($body, true);
+
+            return [
+                'success' => $statusCode >= 200 && $statusCode < 300,
+                'status_code' => $statusCode,
+                'url' => $url,
+                'response' => $decoded ?? $body,
+            ];
+        } catch (TransportExceptionInterface | HttpExceptionInterface $e) {
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+                'url' => $url,
+            ];
+        }
+    }
+
     public function testConnection(): array
     {
         $url = rtrim($this->webhookUrl, '/') . '/' . $this->storeId . '/';

@@ -97,7 +97,7 @@ class EmporiqaExtensionTest extends TestCase
         $this->assertStringNotContainsString('user_id', $url);
     }
 
-    public function testGetWidgetUrlExtractsLocaleShortCode(): void
+    public function testGetWidgetUrlPassesFullLocaleCode(): void
     {
         $request = $this->createMock(Request::class);
         $request->method('getLocale')->willReturn('de_DE');
@@ -107,7 +107,7 @@ class EmporiqaExtensionTest extends TestCase
         $extension = $this->createExtension();
         $url = $extension->getWidgetUrl();
 
-        $this->assertStringContainsString('language=de', $url);
+        $this->assertStringContainsString('language=de_DE', $url);
     }
 
     public function testGetWidgetUrlIncludesUserToken(): void
