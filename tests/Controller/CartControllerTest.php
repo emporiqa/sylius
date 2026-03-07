@@ -99,7 +99,7 @@ class CartControllerTest extends TestCase
     {
         $this->cartContext->method('getCart')->willThrowException(new CartNotFoundException());
 
-        $response = $this->controller->getCart();
+        $response = $this->controller->getCart(new Request());
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
         $data = json_decode($response->getContent(), true);
@@ -117,7 +117,7 @@ class CartControllerTest extends TestCase
         $this->cartContext->method('getCart')->willReturn($cart);
         $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
 
-        $response = $this->controller->getCart();
+        $response = $this->controller->getCart(new Request());
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
         $data = json_decode($response->getContent(), true);
@@ -334,7 +334,7 @@ class CartControllerTest extends TestCase
         $this->cartContext->method('getCart')->willReturn($cart);
         $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
 
-        $response = $this->controller->checkoutUrl();
+        $response = $this->controller->checkoutUrl(new Request());
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
         $data = json_decode($response->getContent(), true);
@@ -347,7 +347,7 @@ class CartControllerTest extends TestCase
         $cart = $this->createMockCart();
         $this->cartContext->method('getCart')->willReturn($cart);
 
-        $response = $this->controller->checkoutUrl();
+        $response = $this->controller->checkoutUrl(new Request());
 
         $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
         $data = json_decode($response->getContent(), true);
@@ -358,7 +358,7 @@ class CartControllerTest extends TestCase
     {
         $this->cartContext->method('getCart')->willThrowException(new CartNotFoundException());
 
-        $response = $this->controller->checkoutUrl();
+        $response = $this->controller->checkoutUrl(new Request());
 
         $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
     }

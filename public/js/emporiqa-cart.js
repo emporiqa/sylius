@@ -69,11 +69,19 @@
     });
   }
 
+  function getLocale() {
+    return (window.emporiqaConfig && window.emporiqaConfig.language) || '';
+  }
+
   async function postJson(url, body) {
     var token = await getCsrfToken();
+    var locale = getLocale();
     var headers = { 'Content-Type': 'application/json' };
     if (token) {
       headers['X-CSRF-Token'] = token;
+    }
+    if (locale) {
+      headers['X-Locale'] = locale;
     }
 
     var response = await fetch(url, {
@@ -202,7 +210,12 @@
   }
 
   async function viewCart() {
-    var response = await fetch('/emporiqa/api/cart', { credentials: 'same-origin' });
+    var locale = getLocale();
+    var fetchHeaders = {};
+    if (locale) {
+      fetchHeaders['X-Locale'] = locale;
+    }
+    var response = await fetch('/emporiqa/api/cart', { credentials: 'same-origin', headers: fetchHeaders });
     if (!response.ok) {
       return buildResponse(false, { error: 'Failed to load cart' });
     }
@@ -210,7 +223,12 @@
   }
 
   async function goToCheckout() {
-    var response = await fetch('/emporiqa/api/cart/checkout-url', { credentials: 'same-origin' });
+    var locale = getLocale();
+    var fetchHeaders = {};
+    if (locale) {
+      fetchHeaders['X-Locale'] = locale;
+    }
+    var response = await fetch('/emporiqa/api/cart/checkout-url', { credentials: 'same-origin', headers: fetchHeaders });
     if (!response.ok) {
       return buildResponse(false, { error: 'Cart is empty' });
     }

@@ -55,7 +55,7 @@ class CartController
         return $response;
     }
 
-    public function getCart(): JsonResponse
+    public function getCart(Request $request): JsonResponse
     {
         try {
             $cart = $this->cartContext->getCart();
@@ -67,11 +67,13 @@ class CartController
             ]);
         }
 
+        $locale = $this->getRequestLocale($request);
+
         /** @var OrderInterface $cart */
         return new JsonResponse([
             'success' => true,
-            'checkoutUrl' => $this->buildCheckoutUrl($cart),
-            'cart' => $this->formatCart($cart),
+            'checkoutUrl' => $this->buildCheckoutUrl($cart, $locale),
+            'cart' => $this->formatCart($cart, $locale),
         ]);
     }
 
@@ -139,10 +141,12 @@ class CartController
             $this->entityManager->persist($cart);
             $this->entityManager->flush();
 
+            $locale = $this->getRequestLocale($request);
+
             return new JsonResponse([
                 'success' => true,
-                'checkoutUrl' => $this->buildCheckoutUrl($cart),
-                'cart' => $this->formatCart($cart),
+                'checkoutUrl' => $this->buildCheckoutUrl($cart, $locale),
+                'cart' => $this->formatCart($cart, $locale),
             ]);
         } catch (\Exception $e) {
             $this->logger?->error('Cart add failed: ' . $e->getMessage());
@@ -191,10 +195,12 @@ class CartController
             $this->entityManager->persist($cart);
             $this->entityManager->flush();
 
+            $locale = $this->getRequestLocale($request);
+
             return new JsonResponse([
                 'success' => true,
-                'checkoutUrl' => $this->buildCheckoutUrl($cart),
-                'cart' => $this->formatCart($cart),
+                'checkoutUrl' => $this->buildCheckoutUrl($cart, $locale),
+                'cart' => $this->formatCart($cart, $locale),
             ]);
         } catch (\Exception $e) {
             $this->logger?->error('Cart update failed: ' . $e->getMessage());
@@ -240,10 +246,12 @@ class CartController
             $this->entityManager->persist($cart);
             $this->entityManager->flush();
 
+            $locale = $this->getRequestLocale($request);
+
             return new JsonResponse([
                 'success' => true,
-                'checkoutUrl' => $this->buildCheckoutUrl($cart),
-                'cart' => $this->formatCart($cart),
+                'checkoutUrl' => $this->buildCheckoutUrl($cart, $locale),
+                'cart' => $this->formatCart($cart, $locale),
             ]);
         } catch (\Exception $e) {
             $this->logger?->error('Cart remove failed: ' . $e->getMessage());
@@ -290,7 +298,7 @@ class CartController
         }
     }
 
-    public function checkoutUrl(): JsonResponse
+    public function checkoutUrl(Request $request): JsonResponse
     {
         try {
             /** @var OrderInterface $cart */
@@ -305,7 +313,7 @@ class CartController
 
         return new JsonResponse([
             'success' => true,
-            'checkoutUrl' => $this->buildCheckoutUrl($cart),
+            'checkoutUrl' => $this->buildCheckoutUrl($cart, $this->getRequestLocale($request)),
         ]);
     }
 
@@ -369,7 +377,7 @@ class CartController
         return null;
     }
 
-    private function formatCart(OrderInterface $cart): array
+    private function formatCart(OrderInterface $cart, ?string $locale = null): array
     {
         $items = [];
         $itemCount = 0;
@@ -387,7 +395,7 @@ class CartController
             }
 
             if ($product) {
-                $productUrl = $this->generateProductUrl($product);
+                $productUrl = $this->generateProductUrl($product, $locale);
             }
 
             $qty = $orderItem->getQuantity();
@@ -412,20 +420,27 @@ class CartController
         ];
     }
 
-    private function buildCheckoutUrl(OrderInterface $cart): ?string
+    private function buildCheckoutUrl(OrderInterface $cart, ?string $locale = null): ?string
     {
         if ($cart->getItems()->isEmpty()) {
             return null;
         }
 
         try {
+            $params = [];
+            if ($locale) {
+                $params['_locale'] = $locale;
+            }
+
             return $this->router->generate(
                 'sylius_shop_checkout_start',
-                [],
+                $params,
                 UrlGeneratorInterface::ABSOLUTE_URL,
             );
         } catch (\Exception) {
-            return '/checkout/' . $cart->getId();
+            $prefix = $locale ? '/' . $locale : '';
+
+            return $prefix . '/checkout/' . $cart->getId();
         }
     }
 
@@ -449,18 +464,25 @@ class CartController
         return null;
     }
 
-    private function generateProductUrl(object $product): ?string
+    private function generateProductUrl(object $product, ?string $locale = null): ?string
     {
         try {
-            $translation = $product->getTranslation();
+            $translation = $locale && method_exists($product, 'getTranslation')
+                ? $product->getTranslation($locale)
+                : $product->getTranslation();
             $slug = method_exists($translation, 'getSlug') ? $translation->getSlug() : null;
             if (!$slug) {
                 return null;
             }
 
+            $params = ['slug' => $slug];
+            if ($locale) {
+                $params['_locale'] = $locale;
+            }
+
             return $this->router->generate(
                 'sylius_shop_product_show',
-                ['slug' => $slug],
+                $params,
                 UrlGeneratorInterface::ABSOLUTE_URL,
             );
         } catch (\Throwable) {
@@ -496,6 +518,13 @@ class CartController
         }
 
         return null;
+    }
+
+    private function getRequestLocale(Request $request): ?string
+    {
+        $locale = $request->headers->get('X-Locale', '');
+
+        return $locale !== '' ? $locale : null;
     }
 
     private function emptyCart(): array
