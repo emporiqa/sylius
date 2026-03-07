@@ -138,11 +138,11 @@ emporiqa:
 
 ### Language Configuration
 
-The `enabled_languages` setting must match your Sylius locale codes exactly. The plugin extracts the short language code (e.g., `en` from `en_US`) for webhook payloads.
+The `enabled_languages` setting must match your Sylius locale codes exactly. Locale codes are passed as-is to Emporiqa (e.g., `en_US`, `de_DE`) — no truncation is applied.
 
 ```yaml
 emporiqa:
-    enabled_languages: ['en_US', 'de_DE']    # Syncs EN and DE content
+    enabled_languages: ['en_US', 'de_DE']    # Syncs en_US and de_DE content
 ```
 
 ### Channel Mapping
@@ -156,7 +156,11 @@ emporiqa:
         FASHION_B2B: 'b2b'    # maps to "b2b" channel in Emporiqa
 ```
 
-When `channel_mapping` is empty (the default), all Sylius channels map to `""` (store-wide). The mapping also determines the `channel` parameter sent with the chat widget.
+**Auto-detection**: When `channel_mapping` is empty (the default), the plugin auto-detects the mapping from the Sylius channel repository:
+- **Single channel** — maps to `""` (store-wide)
+- **Multiple channels** — first channel maps to `""`, remaining channels map to their lowercased code
+
+The mapping also determines the `channel` parameter sent with the chat widget.
 
 ## Webhook Events
 
@@ -214,18 +218,18 @@ Each product or variant is sent as a single consolidated event containing all ch
     "sku": "PROD-123",
     "channels": ["", "b2b"],
     "names": {
-      "": {"en": "Product Name", "de": "Produktname"},
-      "b2b": {"en": "Product Name"}
+      "": {"en_US": "Product Name", "de_DE": "Produktname"},
+      "b2b": {"en_US": "Product Name"}
     },
     "descriptions": {
-      "": {"en": "Description...", "de": "Beschreibung..."}
+      "": {"en_US": "Description...", "de_DE": "Beschreibung..."}
     },
     "links": {
-      "": {"en": "https://store.com/en_US/products/product-name", "de": "https://store.com/de_DE/products/produktname"}
+      "": {"en_US": "https://store.com/en_US/products/product-name", "de_DE": "https://store.com/de_DE/products/produktname"}
     },
     "categories": {
-      "": ["Electronics"],
-      "b2b": ["Electronics"]
+      "": {"en_US": ["Electronics"], "de_DE": ["Elektronik"]},
+      "b2b": {"en_US": ["Electronics"]}
     },
     "brands": {
       "": "Brand Name",
@@ -247,16 +251,16 @@ Each product or variant is sent as a single consolidated event containing all ch
       "": ["https://store.com/media/image/product.jpg"]
     },
     "attributes": {
-      "": {"en": {"Color": "Blue"}, "de": {"Farbe": "Blau"}}
+      "": {"en_US": {"Color": "Blue"}, "de_DE": {"Farbe": "Blau"}}
     },
     "parent_sku": null,
     "is_parent": false,
-    "variation_attributes": []
+    "variation_attributes": {}
   }
 }
 ```
 
-For variable products, the parent is synced with `is_parent: true` and each variant is synced separately with `parent_sku` referencing the parent.
+For variable products, the parent is synced with `is_parent: true` and `variation_attributes` containing the translated option names (e.g., `{"": {"en_US": ["Color", "Size"], "de_DE": ["Farbe", "Größe"]}}`). Each variant is synced separately with `parent_sku` referencing the parent and `variation_attributes: {}` (empty object).
 
 ### Delete Events
 
@@ -280,13 +284,13 @@ Delete events are simplified — they contain only the `identification_number`:
     "identification_number": "page-45",
     "channels": [""],
     "titles": {
-      "": {"en": "Shipping Policy", "de": "Versandrichtlinie"}
+      "": {"en_US": "Shipping Policy", "de_DE": "Versandrichtlinie"}
     },
     "contents": {
-      "": {"en": "Page content...", "de": "Seiteninhalt..."}
+      "": {"en_US": "Page content...", "de_DE": "Seiteninhalt..."}
     },
     "links": {
-      "": {"en": "https://store.com/en_US/pages/shipping-policy", "de": "https://store.com/de_DE/pages/versandrichtlinie"}
+      "": {"en_US": "https://store.com/en_US/pages/shipping-policy", "de_DE": "https://store.com/de_DE/pages/versandrichtlinie"}
     }
   }
 }
@@ -632,6 +636,8 @@ bin/console emporiqa:sync:all
 
 ### Test Connection
 
+Validates the webhook connection by sending a real product via dry run (`?dry_run=true`). Picks a product with variants when available and displays connection status, signature validation, detected languages, field coverage, and any warnings.
+
 ```bash
 bin/console emporiqa:test-connection
 ```
@@ -685,7 +691,7 @@ The widget config:
 window.emporiqaConfig = {
   storeId: "...",
   widgetBaseUrl: "...",
-  language: "en",
+  language: "en_US",
   currency: "EUR",
   channel: "",
   authenticated: false,
@@ -696,7 +702,7 @@ window.emporiqaConfig = {
 window.emporiqaConfig = {
   storeId: "...",
   widgetBaseUrl: "...",
-  language: "en",
+  language: "en_US",
   currency: "EUR",
   channel: "",
   authenticated: true,
@@ -705,7 +711,7 @@ window.emporiqaConfig = {
 }
 ```
 
-- **`language`** — Auto-detected from the current Sylius request locale
+- **`language`** — Full Sylius locale code from the current request (e.g., `en_US`, `de_DE`)
 - **`currency`** — Resolved from the user's selected currency (`CurrencyContextInterface`), falling back to the channel's base currency. Automatically reflects the currency switcher selection.
 - **`channel`** — Emporiqa channel key resolved via `channel_mapping` from the current Sylius channel
 - **`authenticated`** — Boolean flag indicating login state
@@ -869,6 +875,7 @@ emporiqa/sylius-plugin/
     ├── Service/
     │   ├── WebhookSenderTest.php
     │   ├── ProductFormatterTest.php
+    │   ├── MarketplaceCompatibilityTest.php
     │   ├── WebhookEventQueueTest.php
     │   └── OrderProviderTest.php
     ├── EventSubscriber/
@@ -878,6 +885,8 @@ emporiqa/sylius-plugin/
     │   ├── CartControllerTest.php
     │   ├── OrderTrackingControllerTest.php
     │   └── UserTokenControllerTest.php
+    ├── Command/
+    │   └── TestConnectionCommandTest.php
     └── Twig/
         └── EmporiqaExtensionTest.php
 ```
