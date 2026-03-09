@@ -75,8 +75,13 @@ class WebhookEventQueue implements EventSubscriberInterface
         try {
             $this->webhookSender->sendBatch($events);
         } catch (\Throwable $e) {
+            $eventIds = array_map(
+                fn (array $ev) => ($ev['type'] ?? '?') . ':' . ($ev['data']['identification_number'] ?? '?'),
+                $events,
+            );
             $this->logger?->error('Failed to flush webhook event queue', [
                 'events_count' => count($events),
+                'events' => $eventIds,
                 'error' => $e->getMessage(),
             ]);
         }

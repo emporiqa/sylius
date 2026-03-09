@@ -32,6 +32,7 @@ services:
         arguments:
             $enabledLanguages: '%emporiqa.enabled_languages%'
             $channelMapping: '%emporiqa.channel_mapping%'
+            $channelRepository: '@?sylius.repository.channel'
 
     Emporiqa\SyliusPlugin\Service\PageFormatterInterface: '@Emporiqa\SyliusPlugin\Service\PageFormatter'
 
@@ -57,6 +58,7 @@ services:
             $cartEnabled: '%emporiqa.cart.enabled%'
             $channelContext: '@?Sylius\Component\Channel\Context\ChannelContextInterface'
             $currencyContext: '@?Sylius\Component\Currency\Context\CurrencyContextInterface'
+            $channelRepository: '@?sylius.repository.channel'
 
     Emporiqa\SyliusPlugin\Command\SyncProductsCommand: ~
 
@@ -88,11 +90,6 @@ services:
             $security: '@?Symfony\Bundle\SecurityBundle\Security'
             $csrfTokenManager: '@?Symfony\Component\Security\Csrf\CsrfTokenManagerInterface'
             $eventDispatcher: '@?Symfony\Contracts\EventDispatcher\EventDispatcherInterface'
-        tags: ['controller.service_arguments']
-
-    Emporiqa\SyliusPlugin\Controller\UserTokenController:
-        arguments:
-            $webhookSecret: '%emporiqa.webhook_secret%'
         tags: ['controller.service_arguments']
 
     Emporiqa\SyliusPlugin\EventSubscriber\OrderCompleteSubscriber: ~

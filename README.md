@@ -90,7 +90,7 @@ In your shop layout template (e.g. `templates/bundles/SyliusShopBundle/Layout/ba
 bin/console assets:install
 ```
 
-This copies the plugin's JavaScript files (`emporiqa-cart.js`, `emporiqa-widget-loader.js`) to `public/bundles/emporiqa/js/`.
+This copies the plugin's JavaScript files (`emporiqa-cart.js`) to `public/bundles/emporiqa/js/`.
 
 ### Clear Cache
 
@@ -111,7 +111,7 @@ bin/console cache:clear
 | `sync.pages` | bool | `true` | Enable automatic page synchronization |
 | `page_entity_classes` | string[] | `[]` | FQCNs of page entities implementing `PageInterface` |
 | `order_tracking.enabled` | bool | `true` | Enable the order tracking API endpoint |
-| `cart.enabled` | bool | `true` | Enable cart API endpoints, user token, and order completion webhook |
+| `cart.enabled` | bool | `true` | Enable cart API endpoints and order completion webhook |
 
 ### Full Configuration Example
 
@@ -277,20 +277,25 @@ Delete events are simplified — they contain only the `identification_number`:
 
 ### Page Data Structure
 
+Pages are sent to all channels (since Sylius pages don't have channel associations):
+
 ```json
 {
   "type": "page.updated",
   "data": {
     "identification_number": "page-45",
-    "channels": [""],
+    "channels": ["", "b2b"],
     "titles": {
-      "": {"en_US": "Shipping Policy", "de_DE": "Versandrichtlinie"}
+      "": {"en_US": "Shipping Policy", "de_DE": "Versandrichtlinie"},
+      "b2b": {"en_US": "Shipping Policy", "de_DE": "Versandrichtlinie"}
     },
     "contents": {
-      "": {"en_US": "Page content...", "de_DE": "Seiteninhalt..."}
+      "": {"en_US": "Page content...", "de_DE": "Seiteninhalt..."},
+      "b2b": {"en_US": "Page content...", "de_DE": "Seiteninhalt..."}
     },
     "links": {
-      "": {"en_US": "https://store.com/en_US/pages/shipping-policy", "de_DE": "https://store.com/de_DE/pages/versandrichtlinie"}
+      "": {"en_US": "https://store.com/en_US/pages/shipping-policy", "de_DE": "https://store.com/de_DE/pages/versandrichtlinie"},
+      "b2b": {"en_US": "https://store.com/en_US/pages/shipping-policy", "de_DE": "https://store.com/de_DE/pages/versandrichtlinie"}
     }
   }
 }
@@ -521,7 +526,6 @@ The plugin provides a REST API for in-chat cart operations. The Emporiqa chat wi
 | `POST` | `/emporiqa/api/cart/remove` | Remove item from cart |
 | `POST` | `/emporiqa/api/cart/clear` | Clear all items |
 | `GET` | `/emporiqa/api/cart/checkout-url` | Get checkout URL |
-| `GET` | `/emporiqa/api/user-token` | Get signed user identity token |
 
 ### Cart Response Format
 
@@ -578,7 +582,7 @@ emporiqa:
         enabled: false
 ```
 
-When disabled, the `CartController`, `UserTokenController`, and `OrderCompleteSubscriber` services are all removed from the container.
+When disabled, the `CartController` and `OrderCompleteSubscriber` services are removed from the container.
 
 ## Order Completion
 
@@ -664,7 +668,7 @@ One session is created per entity type (e.g. one for products, one for pages):
 
 ```
 Products session: sync.start -> all product data (all channels/languages) -> sync.complete
-Pages session: sync.start -> all page data -> sync.complete
+Pages session: sync.start -> all page data (all channels/languages) -> sync.complete
 ```
 
 Use `--no-session` to skip session management for incremental updates.
@@ -680,44 +684,29 @@ The plugin provides Twig functions to embed the Emporiqa chat widget:
 ```
 
 This renders:
-1. A `<script>` block setting `window.emporiqaConfig` — for anonymous users contains no user data (safe for Varnish/CDN), for authenticated users includes a signed token (Symfony serves these as `Cache-Control: private`)
+1. A `<script>` block setting `window.emporiqaConfig` with `language`, `currency`, `channel`, `authenticated`, and `cartEnabled` — used by the cart handler JS
 2. `emporiqa-cart.js` — Registers `window.EmporiqaCartHandler` for in-chat cart operations
-3. `emporiqa-widget-loader.js` — Reads the config and loads the widget script
+3. The widget embed `<script>` tag with all parameters (store ID, language, currency, channel, and signed user token) in the URL
 
-The widget config:
+The `window.emporiqaConfig` for the cart handler:
 
 ```javascript
 // Anonymous user (cacheable by Varnish/CDN)
 window.emporiqaConfig = {
-  storeId: "...",
-  widgetBaseUrl: "...",
   language: "en_US",
   currency: "EUR",
   channel: "",
   authenticated: false,
   cartEnabled: true
 }
-
-// Authenticated user (Cache-Control: private, includes signed token)
-window.emporiqaConfig = {
-  storeId: "...",
-  widgetBaseUrl: "...",
-  language: "en_US",
-  currency: "EUR",
-  channel: "",
-  authenticated: true,
-  cartEnabled: true,
-  userId: "eyJ1aWQiOiJ1c2VyQGV4YW1wbGUuY29tIiwidHMiOjE3MDk...hmac_signature"
-}
 ```
 
-- **`language`** — Full Sylius locale code from the current request (e.g., `en_US`, `de_DE`)
-- **`currency`** — Resolved from the user's selected currency (`CurrencyContextInterface`), falling back to the channel's base currency. Automatically reflects the currency switcher selection.
+- **`language`** — Full Sylius locale code from the current request (e.g., `en_US`, `de_DE`). Also sent as `X-Locale` header on cart API calls for locale-aware checkout URLs.
+- **`currency`** — Resolved from the user's selected currency (`CurrencyContextInterface`), falling back to the channel's base currency.
 - **`channel`** — Emporiqa channel key resolved via `channel_mapping` from the current Sylius channel
 - **`authenticated`** — Boolean flag indicating login state
-- **`userId`** — HMAC-SHA256 signed token containing the user identifier and timestamp (only present for authenticated users with a configured `webhook_secret`). The token is embedded directly in the page — no AJAX calls needed. This is safe because Symfony serves authenticated pages with `Cache-Control: private` (never shared-cached by Varnish/CDN).
 
-The `/emporiqa/api/user-token` endpoint is still available for API consumers or custom integrations that need to fetch the token separately.
+The widget embed URL includes a signed `user_id` parameter for authenticated users — an HMAC-SHA256 signed token containing the user identifier. The token is deterministic (no timestamp) so it's safe for page caching. Anonymous pages contain no user-specific data (safe for Varnish/CDN). Authenticated pages are served with `Cache-Control: private` by Symfony.
 
 ### Simple Embed (Without Cart)
 
@@ -825,8 +814,7 @@ emporiqa/sylius-plugin/
 │   └── routes.yaml                         # API routes
 ├── public/
 │   └── js/
-│       ├── emporiqa-cart.js                # EmporiqaCartHandler for chat widget
-│       └── emporiqa-widget-loader.js       # Widget loader with token caching
+│       └── emporiqa-cart.js                # EmporiqaCartHandler for chat widget
 ├── src/
 │   ├── EmporiqaPlugin.php                  # Plugin entry point
 │   ├── DependencyInjection/
@@ -851,11 +839,11 @@ emporiqa/sylius-plugin/
 │   │   ├── PageUrlResolver.php             # Page URL generation (decorate this!)
 │   │   ├── PageUrlResolverInterface.php
 │   │   ├── OrderProvider.php               # Order lookup via Sylius
-│   │   └── OrderProviderInterface.php
+│   │   ├── OrderProviderInterface.php
+│   │   └── UserTokenGenerator.php          # Signed user token generation
 │   ├── Controller/
 │   │   ├── CartController.php              # Cart REST API (6 endpoints)
-│   │   ├── OrderTrackingController.php     # Order tracking API
-│   │   └── UserTokenController.php         # AJAX user token endpoint
+│   │   └── OrderTrackingController.php     # Order tracking API
 │   ├── EventSubscriber/
 │   │   ├── OrderCompleteSubscriber.php     # Order completion webhook
 │   │   └── ProductEventSubscriber.php      # Sylius product events
@@ -883,8 +871,7 @@ emporiqa/sylius-plugin/
     │   └── ProductEventSubscriberTest.php
     ├── Controller/
     │   ├── CartControllerTest.php
-    │   ├── OrderTrackingControllerTest.php
-    │   └── UserTokenControllerTest.php
+    │   └── OrderTrackingControllerTest.php
     ├── Command/
     │   └── TestConnectionCommandTest.php
     └── Twig/

@@ -37,8 +37,3 @@ emporiqa_cart_checkout_url:
     path: /emporiqa/api/cart/checkout-url
     controller: Emporiqa\SyliusPlugin\Controller\CartController::checkoutUrl
     methods: [GET]
-
-emporiqa_user_token:
-    path: /emporiqa/api/user-token
-    controller: Emporiqa\SyliusPlugin\Controller\UserTokenController::getToken
-    methods: [GET]

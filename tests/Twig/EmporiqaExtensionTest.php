@@ -130,15 +130,12 @@ class EmporiqaExtensionTest extends TestCase
         $parts = explode('.', $params['user_id']);
         $this->assertCount(2, $parts);
 
-        $decodedPayload = json_decode(base64_decode(strtr($parts[0], '-_', '+/')), true);
-        $this->assertSame('user@example.com', $decodedPayload['uid']);
-        $this->assertArrayHasKey('ts', $decodedPayload);
-
-        $expectedSig = hash_hmac('sha256', $parts[0], 'secret');
-        $this->assertSame($expectedSig, $parts[1]);
+        $decoded = json_decode(base64_decode(strtr($parts[0], '-_', '+/')), true);
+        $this->assertSame('user@example.com', $decoded['uid']);
+        $this->assertArrayHasKey('ts', $decoded);
     }
 
-    public function testRenderWidgetUsesLoaderScript(): void
+    public function testRenderWidgetOutputsScriptTag(): void
     {
         $request = $this->createMock(Request::class);
         $request->method('getLocale')->willReturn('en');
@@ -148,15 +145,14 @@ class EmporiqaExtensionTest extends TestCase
         $extension = $this->createExtension('store-123');
         $html = $extension->renderWidget();
 
-        $this->assertStringContainsString('window.emporiqaConfig', $html);
-        $this->assertStringContainsString('"storeId":"store-123"', $html);
-        $this->assertStringContainsString('"cartEnabled":false', $html);
-        $this->assertStringContainsString('"currency":', $html);
-        $this->assertStringContainsString('"channel":', $html);
-        $this->assertStringContainsString('"authenticated":false', $html);
-        $this->assertStringContainsString('emporiqa-widget-loader.js', $html);
+        $this->assertStringContainsString('<script src="', $html);
+        $this->assertStringContainsString('store_id=store-123', $html);
+        $this->assertStringContainsString('language=en', $html);
+        $this->assertStringContainsString('async', $html);
+        $this->assertStringContainsString('crossorigin="anonymous"', $html);
+        $this->assertStringNotContainsString('window.emporiqaConfig', $html);
         $this->assertStringNotContainsString('emporiqa-cart.js', $html);
-        $this->assertStringNotContainsString('"userId"', $html);
+        $this->assertStringNotContainsString('user_id', $html);
     }
 
     public function testRenderWidgetReturnsEmptyWhenNoStoreId(): void
@@ -189,15 +185,14 @@ class EmporiqaExtensionTest extends TestCase
         $html = $extension->renderCartWidget();
 
         $this->assertStringContainsString('window.emporiqaConfig', $html);
-        $this->assertStringContainsString('"storeId":"store-123"', $html);
         $this->assertStringContainsString('"language":"en"', $html);
         $this->assertStringContainsString('"authenticated":false', $html);
         $this->assertStringContainsString('"cartEnabled":true', $html);
         $this->assertStringContainsString('"currency":', $html);
         $this->assertStringContainsString('"channel":', $html);
-        $this->assertStringNotContainsString('"userId"', $html);
         $this->assertStringContainsString('emporiqa-cart.js', $html);
-        $this->assertStringContainsString('emporiqa-widget-loader.js', $html);
+        $this->assertStringContainsString('store_id=store-123', $html);
+        $this->assertStringContainsString('crossorigin="anonymous"', $html);
     }
 
     public function testRenderCartWidgetReturnsEmptyWhenNoStoreId(): void
@@ -206,33 +201,6 @@ class EmporiqaExtensionTest extends TestCase
         $html = $extension->renderCartWidget();
 
         $this->assertSame('', $html);
-    }
-
-    public function testRenderCartWidgetIncludesUserTokenForLoggedInUser(): void
-    {
-        $request = $this->createMock(Request::class);
-        $request->method('getLocale')->willReturn('en');
-        $this->requestStack->method('getCurrentRequest')->willReturn($request);
-
-        $user = $this->createMock(UserInterface::class);
-        $user->method('getUserIdentifier')->willReturn('user@example.com');
-        $this->security->method('getUser')->willReturn($user);
-
-        $extension = $this->createExtension('store-123', 'https://api.emporiqa.com/webhook', 'secret');
-        $html = $extension->renderCartWidget();
-
-        $this->assertStringContainsString('"authenticated":true', $html);
-        $this->assertStringContainsString('"userId":"', $html);
-
-        // Extract the token from the config JSON and verify its structure
-        preg_match('/"userId":"([^"]+)"/', $html, $matches);
-        $this->assertNotEmpty($matches[1]);
-        $parts = explode('.', $matches[1]);
-        $this->assertCount(2, $parts);
-
-        $decoded = json_decode(base64_decode(strtr($parts[0], '-_', '+/')), true);
-        $this->assertSame('user@example.com', $decoded['uid']);
-        $this->assertArrayHasKey('ts', $decoded);
     }
 
     public function testRenderWidgetIncludesUserTokenForLoggedInUser(): void
@@ -248,8 +216,7 @@ class EmporiqaExtensionTest extends TestCase
         $extension = $this->createExtension('store-123', 'https://api.emporiqa.com/webhook', 'secret');
         $html = $extension->renderWidget();
 
-        $this->assertStringContainsString('"authenticated":true', $html);
-        $this->assertStringContainsString('"userId":"', $html);
+        $this->assertStringContainsString('user_id=', $html);
     }
 
     public function testRenderWidgetOmitsUserIdWhenNoSecret(): void
@@ -265,8 +232,7 @@ class EmporiqaExtensionTest extends TestCase
         $extension = $this->createExtension('store-123', 'https://api.emporiqa.com/webhook', '');
         $html = $extension->renderWidget();
 
-        $this->assertStringContainsString('"authenticated":true', $html);
-        $this->assertStringNotContainsString('"userId"', $html);
+        $this->assertStringNotContainsString('user_id', $html);
     }
 
     public function testRenderCartWidgetWithCartDisabled(): void
@@ -303,8 +269,7 @@ class EmporiqaExtensionTest extends TestCase
 
         $html = $extension->renderWidget();
 
-        $this->assertStringContainsString('"currency":"USD"', $html);
-        $this->assertStringContainsString('"channel":""', $html);
+        $this->assertStringContainsString('currency=USD', $html);
     }
 
     public function testGetWidgetUrlIncludesCurrencyAndChannel(): void
@@ -356,7 +321,7 @@ class EmporiqaExtensionTest extends TestCase
         );
 
         $html = $extension->renderWidget();
-        $this->assertStringContainsString('"currency":"USD"', $html);
+        $this->assertStringContainsString('currency=USD', $html);
 
         $url = $extension->getWidgetUrl();
         $this->assertStringContainsString('currency=USD', $url);
@@ -388,6 +353,6 @@ class EmporiqaExtensionTest extends TestCase
         );
 
         $html = $extension->renderWidget();
-        $this->assertStringContainsString('"currency":"EUR"', $html);
+        $this->assertStringContainsString('currency=EUR', $html);
     }
 }

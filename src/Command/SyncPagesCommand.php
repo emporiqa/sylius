@@ -7,6 +7,7 @@ namespace Emporiqa\SyliusPlugin\Command;
 use Doctrine\ORM\EntityManagerInterface;
 use Emporiqa\SyliusPlugin\Service\PageFormatterInterface;
 use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -24,8 +25,9 @@ class SyncPagesCommand extends AbstractSyncCommand
         private PageFormatterInterface $formatter,
         private array $pageEntityClasses,
         WebhookSenderInterface $webhookSender,
+        ?LoggerInterface $logger = null,
     ) {
-        parent::__construct($webhookSender);
+        parent::__construct($webhookSender, $logger);
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int

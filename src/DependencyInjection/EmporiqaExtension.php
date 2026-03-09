@@ -6,7 +6,6 @@ namespace Emporiqa\SyliusPlugin\DependencyInjection;
 
 use Emporiqa\SyliusPlugin\Controller\CartController;
 use Emporiqa\SyliusPlugin\Controller\OrderTrackingController;
-use Emporiqa\SyliusPlugin\Controller\UserTokenController;
 use Emporiqa\SyliusPlugin\EventListener\PageDoctrineListener;
 use Emporiqa\SyliusPlugin\EventSubscriber\OrderCompleteSubscriber;
 use Emporiqa\SyliusPlugin\Service\PageFormatter;
@@ -55,7 +54,6 @@ class EmporiqaExtension extends Extension
 
         if (!$config['cart']['enabled']) {
             $this->removeServiceIfExists($container, CartController::class);
-            $this->removeServiceIfExists($container, UserTokenController::class);
             $this->removeServiceIfExists($container, OrderCompleteSubscriber::class);
         }
     }

@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Twig;
 
-use Emporiqa\SyliusPlugin\Controller\UserTokenController;
+use Emporiqa\SyliusPlugin\Service\UserTokenGenerator;
 use Sylius\Component\Channel\Context\ChannelContextInterface;
+use Sylius\Component\Channel\Repository\ChannelRepositoryInterface;
 use Sylius\Component\Currency\Context\CurrencyContextInterface;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -24,6 +25,7 @@ class EmporiqaExtension extends AbstractExtension
         private bool $cartEnabled = true,
         private ?ChannelContextInterface $channelContext = null,
         private ?CurrencyContextInterface $currencyContext = null,
+        private ?ChannelRepositoryInterface $channelRepository = null,
     ) {}
 
     public function getFunctions(): array
@@ -37,7 +39,7 @@ class EmporiqaExtension extends AbstractExtension
     }
 
     /**
-     * Renders the widget with inline config.
+     * Renders the widget embed script tag.
      *
      * Anonymous pages contain no user-specific data (safe for Varnish/CDN).
      * Authenticated pages include a signed user token — Symfony already
@@ -50,19 +52,13 @@ class EmporiqaExtension extends AbstractExtension
             return '';
         }
 
-        $config = $this->buildWidgetConfig(false);
-        $configJson = json_encode($config, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR);
+        $widgetUrl = $this->buildWidgetUrl();
 
-        $html = '<script>' . "\n";
-        $html .= 'window.emporiqaConfig = ' . $configJson . ';' . "\n";
-        $html .= '</script>' . "\n";
-        $html .= '<script src="/bundles/emporiqaplugin/js/emporiqa-widget-loader.js"></script>';
-
-        return $html;
+        return '<script src="' . htmlspecialchars($widgetUrl, ENT_QUOTES, 'UTF-8') . '" async crossorigin="anonymous"></script>';
     }
 
     /**
-     * Renders the cart-enabled widget with inline config.
+     * Renders the cart-enabled widget with inline config and embed script.
      */
     public function renderCartWidget(): string
     {
@@ -72,39 +68,28 @@ class EmporiqaExtension extends AbstractExtension
 
         $config = $this->buildWidgetConfig($this->cartEnabled);
         $configJson = json_encode($config, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR);
+        $widgetUrl = $this->buildWidgetUrl();
 
         $html = '<script>' . "\n";
         $html .= 'window.emporiqaConfig = ' . $configJson . ';' . "\n";
         $html .= '</script>' . "\n";
         $html .= '<script src="/bundles/emporiqaplugin/js/emporiqa-cart.js"></script>' . "\n";
-        $html .= '<script src="/bundles/emporiqaplugin/js/emporiqa-widget-loader.js"></script>';
+        $html .= '<script src="' . htmlspecialchars($widgetUrl, ENT_QUOTES, 'UTF-8') . '" async crossorigin="anonymous"></script>';
 
         return $html;
     }
 
     private function buildWidgetConfig(bool $cartEnabled): array
     {
-        $baseDomain = parse_url($this->webhookUrl, PHP_URL_HOST) ?: 'emporiqa.com';
         $user = $this->security->getUser();
 
-        $config = [
-            'storeId' => $this->storeId,
-            'widgetBaseUrl' => 'https://' . $baseDomain . '/chat/embed/',
+        return [
             'language' => $this->getLocale(),
             'currency' => $this->getCurrentCurrencyCode(),
             'channel' => $this->getCurrentChannelKey(),
             'authenticated' => $user !== null,
             'cartEnabled' => $cartEnabled,
         ];
-
-        if ($user !== null && !empty($this->webhookSecret)) {
-            $config['userId'] = UserTokenController::generateUserToken(
-                $user->getUserIdentifier(),
-                $this->webhookSecret,
-            );
-        }
-
-        return $config;
     }
 
     public function getStoreId(): string
@@ -113,12 +98,14 @@ class EmporiqaExtension extends AbstractExtension
     }
 
     /**
-     * Returns a direct widget URL with embedded user token.
-     *
      * @deprecated Use renderWidget() or renderCartWidget() instead.
-     *             This method embeds user-specific data and is not safe for cached pages.
      */
     public function getWidgetUrl(): string
+    {
+        return $this->buildWidgetUrl();
+    }
+
+    private function buildWidgetUrl(): string
     {
         $baseDomain = parse_url($this->webhookUrl, PHP_URL_HOST) ?: 'emporiqa.com';
 
@@ -130,8 +117,8 @@ class EmporiqaExtension extends AbstractExtension
         ];
 
         $user = $this->security->getUser();
-        if ($user !== null) {
-            $params['user_id'] = UserTokenController::generateUserToken(
+        if ($user !== null && !empty($this->webhookSecret)) {
+            $params['user_id'] = UserTokenGenerator::generate(
                 $user->getUserIdentifier(),
                 $this->webhookSecret,
             );
@@ -178,9 +165,42 @@ class EmporiqaExtension extends AbstractExtension
             $channel = $this->channelContext->getChannel();
             $code = $channel->getCode() ?? '';
 
-            return $this->channelMapping[$code] ?? '';
+            if (!empty($this->channelMapping)) {
+                return $this->channelMapping[$code] ?? '';
+            }
+
+            return $this->autoDetectChannelKey($code);
         } catch (\Throwable) {
             return '';
         }
+    }
+
+    private function autoDetectChannelKey(string $currentCode): string
+    {
+        if ($this->channelRepository === null) {
+            return '';
+        }
+
+        $channels = $this->channelRepository->findAll();
+        if (count($channels) <= 1) {
+            return '';
+        }
+
+        $first = true;
+        foreach ($channels as $ch) {
+            $code = $ch->getCode();
+            if ($first) {
+                if ($code === $currentCode) {
+                    return '';
+                }
+                $first = false;
+            } else {
+                if ($code === $currentCode) {
+                    return strtolower($code);
+                }
+            }
+        }
+
+        return '';
     }
 }

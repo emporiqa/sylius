@@ -7,6 +7,7 @@ namespace Emporiqa\SyliusPlugin\Command;
 use Doctrine\ORM\EntityManagerInterface;
 use Emporiqa\SyliusPlugin\Service\ProductFormatterInterface;
 use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
+use Psr\Log\LoggerInterface;
 use Sylius\Component\Core\Repository\ProductRepositoryInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 
@@ -21,8 +22,9 @@ class SyncProductsCommand extends AbstractSyncCommand
         private ProductFormatterInterface $formatter,
         private EntityManagerInterface $entityManager,
         WebhookSenderInterface $webhookSender,
+        ?LoggerInterface $logger = null,
     ) {
-        parent::__construct($webhookSender);
+        parent::__construct($webhookSender, $logger);
     }
 
     protected function getEntityLabel(): string
@@ -39,6 +41,11 @@ class SyncProductsCommand extends AbstractSyncCommand
     {
         $query = $this->productRepository
             ->createQueryBuilder('p')
+            ->select('p', 'v', 'ch', 't', 'img')
+            ->leftJoin('p.variants', 'v')
+            ->leftJoin('p.channels', 'ch')
+            ->leftJoin('p.translations', 't')
+            ->leftJoin('p.images', 'img')
             ->getQuery();
 
         foreach ($query->toIterable() as $product) {

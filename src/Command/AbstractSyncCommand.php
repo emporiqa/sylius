@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\Command;
 
 use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -15,6 +16,7 @@ abstract class AbstractSyncCommand extends Command
 {
     public function __construct(
         protected WebhookSenderInterface $webhookSender,
+        protected ?LoggerInterface $logger = null,
     ) {
         parent::__construct();
     }
@@ -91,6 +93,12 @@ abstract class AbstractSyncCommand extends Command
             try {
                 $events = $this->formatEntity($entity);
             } catch (\Throwable $e) {
+                $entityId = method_exists($entity, 'getId') ? $entity->getId() : '?';
+                $this->logger?->error('Failed to format entity for sync', [
+                    'entity' => get_class($entity),
+                    'id' => $entityId,
+                    'error' => $e->getMessage(),
+                ]);
                 $errorCount++;
                 $progressBar->advance();
                 continue;
