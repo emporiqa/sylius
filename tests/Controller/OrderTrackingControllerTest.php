@@ -207,4 +207,89 @@ class OrderTrackingControllerTest extends TestCase
 
         $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
     }
+
+    public function testRejectsExpiredTimestamp(): void
+    {
+        $request = $this->createSignedRequest([
+            'order_identifier' => '000123',
+            'timestamp' => time() - 301,
+        ]);
+
+        $response = $this->controller->track($request);
+
+        $this->assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
+        $data = json_decode($response->getContent(), true);
+        $this->assertSame('Request expired', $data['error']);
+    }
+
+    public function testAcceptsTimestampAtExactBoundary(): void
+    {
+        $this->orderProvider->method('findOrder')->willReturn([
+            'order_id' => '000123',
+            'status' => 'new',
+        ]);
+
+        $request = $this->createSignedRequest([
+            'order_identifier' => '000123',
+            'timestamp' => time() - 300,
+        ]);
+
+        $response = $this->controller->track($request);
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testRejectsFutureTimestampBeyondTolerance(): void
+    {
+        $request = $this->createSignedRequest([
+            'order_identifier' => '000123',
+            'timestamp' => time() + 301,
+        ]);
+
+        $response = $this->controller->track($request);
+
+        $this->assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
+    }
+
+    public function testAcceptsFutureTimestampWithinTolerance(): void
+    {
+        $this->orderProvider->method('findOrder')->willReturn([
+            'order_id' => '000123',
+            'status' => 'new',
+        ]);
+
+        $request = $this->createSignedRequest([
+            'order_identifier' => '000123',
+            'timestamp' => time() + 299,
+        ]);
+
+        $response = $this->controller->track($request);
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testRejectsEmptyBody(): void
+    {
+        $body = '';
+        $signature = hash_hmac('sha256', $body, self::WEBHOOK_SECRET);
+
+        $request = Request::create('/emporiqa/api/order/tracking', 'POST', [], [], [], [], $body);
+        $request->headers->set('X-Emporiqa-Signature', $signature);
+
+        $response = $this->controller->track($request);
+
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+    }
+
+    public function testRejectsEmptyOrderIdentifier(): void
+    {
+        $request = $this->createSignedRequest([
+            'order_identifier' => '',
+            'timestamp' => time(),
+        ]);
+
+        $response = $this->controller->track($request);
+
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+    }
 }

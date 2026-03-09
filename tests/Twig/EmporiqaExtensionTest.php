@@ -355,4 +355,171 @@ class EmporiqaExtensionTest extends TestCase
         $html = $extension->renderWidget();
         $this->assertStringContainsString('currency=EUR', $html);
     }
+
+    public function testAutoDetectChannelWithThreeChannels(): void
+    {
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('en');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+        $this->security->method('getUser')->willReturn(null);
+
+        $ch1 = $this->createChannelWithCurrency('WEB', 'EUR');
+        $ch2 = $this->createChannelWithCurrency('B2B', 'USD');
+        $ch3 = $this->createChannelWithCurrency('WHOLESALE', 'GBP');
+
+        $channelRepo = $this->createMock(\Sylius\Component\Channel\Repository\ChannelRepositoryInterface::class);
+        $channelRepo->method('findAll')->willReturn([$ch1, $ch2, $ch3]);
+
+        // Current channel is the third one (WHOLESALE)
+        $this->channelContext->method('getChannel')->willReturn($ch3);
+
+        $extension = new EmporiqaExtension(
+            'store-123',
+            'https://api.emporiqa.com/webhook',
+            'test-secret',
+            $this->requestStack,
+            $this->security,
+            [],
+            true,
+            $this->channelContext,
+            null,
+            $channelRepo,
+        );
+
+        $url = $extension->getWidgetUrl();
+
+        // WEB is first → "", B2B → "b2b", WHOLESALE → "wholesale"
+        $this->assertStringContainsString('channel=wholesale', $url);
+        $this->assertStringContainsString('currency=GBP', $url);
+    }
+
+    public function testAutoDetectChannelFirstChannelReturnsEmpty(): void
+    {
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('en');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+        $this->security->method('getUser')->willReturn(null);
+
+        $ch1 = $this->createChannelWithCurrency('WEB', 'EUR');
+        $ch2 = $this->createChannelWithCurrency('B2B', 'USD');
+
+        $channelRepo = $this->createMock(\Sylius\Component\Channel\Repository\ChannelRepositoryInterface::class);
+        $channelRepo->method('findAll')->willReturn([$ch1, $ch2]);
+
+        // Current channel is the first one (WEB)
+        $this->channelContext->method('getChannel')->willReturn($ch1);
+
+        $extension = new EmporiqaExtension(
+            'store-123',
+            'https://api.emporiqa.com/webhook',
+            'test-secret',
+            $this->requestStack,
+            $this->security,
+            [],
+            true,
+            $this->channelContext,
+            null,
+            $channelRepo,
+        );
+
+        $url = $extension->getWidgetUrl();
+
+        // First channel → "" (empty channel key)
+        parse_str(parse_url($url, PHP_URL_QUERY), $params);
+        $this->assertSame('', $params['channel']);
+    }
+
+    public function testAutoDetectSingleChannelReturnsEmpty(): void
+    {
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('en');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+        $this->security->method('getUser')->willReturn(null);
+
+        $ch1 = $this->createChannelWithCurrency('WEB', 'EUR');
+
+        $channelRepo = $this->createMock(\Sylius\Component\Channel\Repository\ChannelRepositoryInterface::class);
+        $channelRepo->method('findAll')->willReturn([$ch1]);
+
+        $this->channelContext->method('getChannel')->willReturn($ch1);
+
+        $extension = new EmporiqaExtension(
+            'store-123',
+            'https://api.emporiqa.com/webhook',
+            'test-secret',
+            $this->requestStack,
+            $this->security,
+            [],
+            true,
+            $this->channelContext,
+            null,
+            $channelRepo,
+        );
+
+        $url = $extension->getWidgetUrl();
+
+        parse_str(parse_url($url, PHP_URL_QUERY), $params);
+        $this->assertSame('', $params['channel']);
+    }
+
+    public function testChannelContextThrowingReturnsEmptyChannel(): void
+    {
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('en');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+        $this->security->method('getUser')->willReturn(null);
+
+        $channelContext = $this->createMock(ChannelContextInterface::class);
+        $channelContext->method('getChannel')->willThrowException(
+            new \RuntimeException('No channel found')
+        );
+
+        $extension = $this->createExtension(
+            'store-123',
+            'https://api.emporiqa.com/webhook',
+            'test-secret',
+            ['WEB' => '', 'B2B' => 'b2b'],
+            true,
+            $channelContext,
+        );
+
+        $url = $extension->getWidgetUrl();
+
+        parse_str(parse_url($url, PHP_URL_QUERY), $params);
+        $this->assertSame('', $params['channel']);
+        $this->assertSame('', $params['currency']);
+    }
+
+    public function testRenderCartWidgetIncludesAuthenticatedUserInfo(): void
+    {
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('en');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+
+        $user = $this->createMock(UserInterface::class);
+        $user->method('getUserIdentifier')->willReturn('admin@example.com');
+        $this->security->method('getUser')->willReturn($user);
+
+        $extension = $this->createExtension('store-123', 'https://api.emporiqa.com/webhook', 'secret');
+        $html = $extension->renderCartWidget();
+
+        $this->assertStringContainsString('"authenticated":true', $html);
+        $this->assertStringContainsString('user_id=', $html);
+    }
+
+    public function testNoCurrencyOrChannelContextReturnsEmptyValues(): void
+    {
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('en');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+        $this->security->method('getUser')->willReturn(null);
+
+        // No channel context, no currency context
+        $extension = $this->createExtension();
+        $url = $extension->getWidgetUrl();
+
+        parse_str(parse_url($url, PHP_URL_QUERY), $params);
+        $this->assertSame('', $params['currency']);
+        $this->assertSame('', $params['channel']);
+    }
 }

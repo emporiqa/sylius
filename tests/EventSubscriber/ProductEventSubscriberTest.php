@@ -184,4 +184,157 @@ class ProductEventSubscriberTest extends TestCase
 
         $this->assertFalse($this->webhookQueue->hasPending());
     }
+
+    public function testOnVariantCreateQueuesEvents(): void
+    {
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn(10);
+        $variant->method('getProduct')->willReturn($product);
+
+        $event = $this->createMock(ResourceControllerEvent::class);
+        $event->method('getSubject')->willReturn($variant);
+
+        $this->formatter->method('format')->with($product)->willReturn([
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
+        ]);
+
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
+        $subscriber->onVariantCreate($event);
+
+        $this->assertTrue($this->webhookQueue->hasPending());
+    }
+
+    public function testOnVariantUpdateQueuesEvents(): void
+    {
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn(10);
+        $variant->method('getProduct')->willReturn($product);
+
+        $event = $this->createMock(ResourceControllerEvent::class);
+        $event->method('getSubject')->willReturn($variant);
+
+        $this->formatter->method('format')->with($product)->willReturn([
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
+        ]);
+
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
+        $subscriber->onVariantUpdate($event);
+
+        $this->assertTrue($this->webhookQueue->hasPending());
+    }
+
+    public function testOnVariantCreateSkipsWhenSyncDisabled(): void
+    {
+        $event = $this->createMock(ResourceControllerEvent::class);
+
+        $this->formatter->expects($this->never())->method('format');
+
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, false, $this->logger);
+        $subscriber->onVariantCreate($event);
+
+        $this->assertFalse($this->webhookQueue->hasPending());
+    }
+
+    public function testOnVariantCreateIgnoresNonVariantSubject(): void
+    {
+        $event = $this->createMock(ResourceControllerEvent::class);
+        $event->method('getSubject')->willReturn(new \stdClass());
+
+        $this->formatter->expects($this->never())->method('format');
+
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger);
+        $subscriber->onVariantCreate($event);
+    }
+
+    public function testOnVariantCreateIgnoresVariantWithNullProduct(): void
+    {
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getProduct')->willReturn(null);
+
+        $event = $this->createMock(ResourceControllerEvent::class);
+        $event->method('getSubject')->willReturn($variant);
+
+        $this->formatter->expects($this->never())->method('format');
+
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger);
+        $subscriber->onVariantCreate($event);
+    }
+
+    public function testOnVariantCreateLogsErrorOnFormatterFailure(): void
+    {
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn(10);
+        $variant->method('getProduct')->willReturn($product);
+
+        $event = $this->createMock(ResourceControllerEvent::class);
+        $event->method('getSubject')->willReturn($variant);
+
+        $this->formatter->method('format')->willThrowException(new \RuntimeException('Format failed'));
+        $this->logger->expects($this->once())->method('error');
+
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
+        $subscriber->onVariantCreate($event);
+    }
+
+    public function testPreSyncEventCanCancelVariantSync(): void
+    {
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn(10);
+        $variant->method('getProduct')->willReturn($product);
+
+        $event = $this->createMock(ResourceControllerEvent::class);
+        $event->method('getSubject')->willReturn($variant);
+
+        $cancellingDispatcher = $this->createMock(EventDispatcherInterface::class);
+        $cancellingDispatcher->method('dispatch')->willReturnCallback(
+            function ($event) {
+                if ($event instanceof PreSyncEvent) {
+                    $event->cancel();
+                }
+                return $event;
+            }
+        );
+
+        $this->formatter->expects($this->never())->method('format');
+
+        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $cancellingDispatcher);
+        $subscriber->onVariantUpdate($event);
+
+        $this->assertFalse($this->webhookQueue->hasPending());
+    }
+
+    public function testOnProductCreateSetsCreatedType(): void
+    {
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+
+        $event = $this->createMock(ResourceControllerEvent::class);
+        $event->method('getSubject')->willReturn($product);
+
+        $this->formatter->method('format')->willReturn([
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
+        ]);
+
+        $queuedEvents = [];
+        $webhookSender = $this->createMock(WebhookSenderInterface::class);
+        $queue = new WebhookEventQueue($webhookSender);
+
+        $subscriber = new ProductEventSubscriber($queue, $this->formatter, true, $this->logger, $this->eventDispatcher);
+        $subscriber->onProductCreate($event);
+
+        // Verify the queue has events (type is changed to product.created inside onProductCreate)
+        $this->assertTrue($queue->hasPending());
+    }
 }

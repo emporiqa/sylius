@@ -840,6 +840,7 @@ emporiqa/sylius-plugin/
 │   │   ├── PageUrlResolverInterface.php
 │   │   ├── OrderProvider.php               # Order lookup via Sylius
 │   │   ├── OrderProviderInterface.php
+│   │   ├── CurrencyHelper.php              # Currency-aware price conversion
 │   │   └── UserTokenGenerator.php          # Signed user token generation
 │   ├── Controller/
 │   │   ├── CartController.php              # Cart REST API (6 endpoints)
@@ -863,8 +864,11 @@ emporiqa/sylius-plugin/
     ├── Service/
     │   ├── WebhookSenderTest.php
     │   ├── ProductFormatterTest.php
+    │   ├── PageFormatterTest.php
+    │   ├── CurrencyHelperTest.php
     │   ├── MarketplaceCompatibilityTest.php
     │   ├── WebhookEventQueueTest.php
+    │   ├── UserTokenGeneratorTest.php
     │   └── OrderProviderTest.php
     ├── EventSubscriber/
     │   ├── OrderCompleteSubscriberTest.php

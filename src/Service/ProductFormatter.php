@@ -128,10 +128,10 @@ class ProductFormatter implements ProductFormatterInterface
                 $lang = $locale;
 
                 $names[$empChannelKey][$lang] = $translation->getName();
-                $descriptions[$empChannelKey][$lang] = $translation->getDescription();
+                $descriptions[$empChannelKey][$lang] = $translation->getDescription() ?? '';
                 $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
                 $categories[$empChannelKey][$lang] = $this->getCategoryNamesForLocale($product, $locale);
-                $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale);
+                $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale) ?: new \stdClass();
             }
 
             $brands[$empChannelKey] = $this->getBrandValue($product) ?? '';
@@ -198,10 +198,10 @@ class ProductFormatter implements ProductFormatterInterface
                 $lang = $locale;
 
                 $names[$empChannelKey][$lang] = $translation->getName();
-                $descriptions[$empChannelKey][$lang] = $translation->getDescription();
+                $descriptions[$empChannelKey][$lang] = $translation->getDescription() ?? '';
                 $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
                 $categories[$empChannelKey][$lang] = $this->getCategoryNamesForLocale($product, $locale);
-                $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale);
+                $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale) ?: new \stdClass();
                 $variationAttributes[$empChannelKey][$lang] = $this->getVariationAttributeNames($product, $locale);
             }
 
@@ -269,13 +269,14 @@ class ProductFormatter implements ProductFormatterInterface
                 }
 
                 $names[$empChannelKey][$lang] = $variantName;
-                $descriptions[$empChannelKey][$lang] = $translation?->getDescription();
+                $descriptions[$empChannelKey][$lang] = $translation?->getDescription() ?? '';
                 $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
                 $categories[$empChannelKey][$lang] = $this->getCategoryNamesForLocale($product, $locale);
-                $attributes[$empChannelKey][$lang] = array_merge(
+                $mergedAttrs = array_merge(
                     $this->getProductAttributes($product, $locale),
                     $variantOptionAttrs,
                 );
+                $attributes[$empChannelKey][$lang] = $mergedAttrs ?: new \stdClass();
             }
 
             $brands[$empChannelKey] = $this->getBrandValue($product) ?? '';
@@ -391,8 +392,14 @@ class ProductFormatter implements ProductFormatterInterface
             return [];
         }
 
-        $currentPrice = $channelPricing->getPrice() ? $channelPricing->getPrice() / 100 : null;
-        $regularPrice = $channelPricing->getOriginalPrice() ? $channelPricing->getOriginalPrice() / 100 : null;
+        $currencyCode = $channel->getBaseCurrency()?->getCode() ?? '';
+
+        $currentPrice = $channelPricing->getPrice()
+            ? CurrencyHelper::toCurrencyUnits($channelPricing->getPrice(), $currencyCode)
+            : null;
+        $regularPrice = $channelPricing->getOriginalPrice()
+            ? CurrencyHelper::toCurrencyUnits($channelPricing->getOriginalPrice(), $currencyCode)
+            : null;
         if ($regularPrice === null && $currentPrice !== null) {
             $regularPrice = $currentPrice;
         }
@@ -401,17 +408,14 @@ class ProductFormatter implements ProductFormatterInterface
             return [];
         }
 
-        $currencyCode = $channel->getBaseCurrency()?->getCode() ?? 'EUR';
-
         $priceData = [
             'currency' => $currencyCode,
             'current_price' => $currentPrice,
             'regular_price' => $regularPrice,
         ];
 
-        // Sylius 1.x/2.x: minimumPrice often represents price floor / ex-tax price
         if (method_exists($channelPricing, 'getMinimumPrice') && $channelPricing->getMinimumPrice()) {
-            $priceData['price_excl_tax'] = $channelPricing->getMinimumPrice() / 100;
+            $priceData['minimum_price'] = CurrencyHelper::toCurrencyUnits($channelPricing->getMinimumPrice(), $currencyCode);
         }
 
         return [$priceData];
@@ -479,11 +483,14 @@ class ProductFormatter implements ProductFormatterInterface
         $current = $taxon;
 
         while ($current !== null) {
-            // Skip invisible root containers (root taxons that are ancestors, not the assigned taxon itself)
             if ($current->isRoot() && $current !== $taxon) {
                 break;
             }
-            $name = $current->getTranslation($locale)?->getName();
+            try {
+                $name = $current->getTranslation($locale)?->getName();
+            } catch (\Throwable) {
+                $name = null;
+            }
             if ($name) {
                 $ancestors[] = $name;
             }
@@ -520,10 +527,18 @@ class ProductFormatter implements ProductFormatterInterface
     {
         $attrs = [];
         foreach ($variant->getOptionValues() as $optionValue) {
-            $optionName = $optionValue->getOption()?->getTranslation($locale)?->getName()
-                ?? $optionValue->getOption()?->getCode();
-            $attrs[$optionName] = $optionValue->getTranslation($locale)?->getValue()
-                ?? $optionValue->getCode();
+            try {
+                $optionName = $optionValue->getOption()?->getTranslation($locale)?->getName()
+                    ?? $optionValue->getOption()?->getCode();
+            } catch (\Throwable) {
+                $optionName = $optionValue->getOption()?->getCode();
+            }
+            try {
+                $attrs[$optionName] = $optionValue->getTranslation($locale)?->getValue()
+                    ?? $optionValue->getCode();
+            } catch (\Throwable) {
+                $attrs[$optionName] = $optionValue->getCode();
+            }
         }
 
         return $attrs;
@@ -533,8 +548,12 @@ class ProductFormatter implements ProductFormatterInterface
     {
         $attributes = [];
         foreach ($product->getOptions() as $option) {
-            $attributes[] = $option->getTranslation($locale)?->getName()
-                ?? $option->getCode();
+            try {
+                $attributes[] = $option->getTranslation($locale)?->getName()
+                    ?? $option->getCode();
+            } catch (\Throwable) {
+                $attributes[] = $option->getCode();
+            }
         }
 
         return $attributes;
@@ -546,7 +565,11 @@ class ProductFormatter implements ProductFormatterInterface
         foreach ($product->getAttributes() as $attributeValue) {
             $attribute = $attributeValue->getAttribute();
             if ($attribute) {
-                $name = $attribute->getTranslation($locale)?->getName() ?? $attribute->getCode();
+                try {
+                    $name = $attribute->getTranslation($locale)?->getName() ?? $attribute->getCode();
+                } catch (\Throwable) {
+                    $name = $attribute->getCode();
+                }
                 $attributes[$name] = $attributeValue->getValue();
             }
         }

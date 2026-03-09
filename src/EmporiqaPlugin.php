@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin;
 
-use Sylius\Bundle\CoreBundle\Application\SyliusPluginTrait;
+use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 use Symfony\Component\HttpKernel\Bundle\Bundle;
 
 final class EmporiqaPlugin extends Bundle
 {
-    use SyliusPluginTrait;
+    public function getContainerExtension(): ?ExtensionInterface
+    {
+        if (!isset($this->extension)) {
+            $this->extension = new DependencyInjection\EmporiqaExtension();
+        }
+
+        return $this->extension;
+    }
 
     public function getPath(): string
     {

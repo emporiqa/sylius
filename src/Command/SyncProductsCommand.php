@@ -41,11 +41,6 @@ class SyncProductsCommand extends AbstractSyncCommand
     {
         $query = $this->productRepository
             ->createQueryBuilder('p')
-            ->select('p', 'v', 'ch', 't', 'img')
-            ->leftJoin('p.variants', 'v')
-            ->leftJoin('p.channels', 'ch')
-            ->leftJoin('p.translations', 't')
-            ->leftJoin('p.images', 'img')
             ->getQuery();
 
         foreach ($query->toIterable() as $product) {

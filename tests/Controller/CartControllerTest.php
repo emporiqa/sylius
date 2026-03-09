@@ -488,4 +488,201 @@ class CartControllerTest extends TestCase
         $data = json_decode($response->getContent(), true);
         $this->assertSame('Missing variation_id', $data['error']);
     }
+
+    public function testAddResolvesVariationIdFormat(): void
+    {
+        $cart = $this->createMockCart([], 1999, 'EUR');
+        $this->cartContext->method('getCart')->willReturn($cart);
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn(456);
+        $this->variantRepository->method('find')->with(456)->willReturn($variant);
+
+        $newOrderItem = $this->createMock(OrderItemInterface::class);
+        $this->orderItemFactory->method('createNew')->willReturn($newOrderItem);
+        $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
+
+        $body = json_encode(['items' => [['variation_id' => 'variation-456', 'quantity' => 1]]]);
+        $request = Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body);
+
+        $response = $this->controller->add($request);
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testAddResolvesProductIdFormat(): void
+    {
+        $cart = $this->createMockCart([], 1999, 'EUR');
+        $this->cartContext->method('getCart')->willReturn($cart);
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn(789);
+        $this->variantRepository->method('findOneBy')->with(['product' => 10])->willReturn($variant);
+
+        $newOrderItem = $this->createMock(OrderItemInterface::class);
+        $this->orderItemFactory->method('createNew')->willReturn($newOrderItem);
+        $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
+
+        $body = json_encode(['items' => [['variation_id' => 'product-10', 'quantity' => 1]]]);
+        $request = Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body);
+
+        $response = $this->controller->add($request);
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testAddResolvesSKUFormat(): void
+    {
+        $cart = $this->createMockCart([], 1999, 'EUR');
+        $this->cartContext->method('getCart')->willReturn($cart);
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn(123);
+        $this->variantRepository->method('findOneBy')->with(['code' => 'PHONE_RED'])->willReturn($variant);
+
+        $newOrderItem = $this->createMock(OrderItemInterface::class);
+        $this->orderItemFactory->method('createNew')->willReturn($newOrderItem);
+        $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
+
+        $body = json_encode(['items' => [['variation_id' => 'PHONE_RED', 'quantity' => 1]]]);
+        $request = Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body);
+
+        $response = $this->controller->add($request);
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testAddIncrementsExistingItemQuantity(): void
+    {
+        $orderItem = $this->createMockOrderItem(456, 2, 1999);
+        $cart = $this->createMockCart([$orderItem], 5997, 'EUR');
+        $this->cartContext->method('getCart')->willReturn($cart);
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn(456);
+        $this->variantRepository->method('find')->with(456)->willReturn($variant);
+
+        $this->orderItemQuantityModifier
+            ->expects($this->once())
+            ->method('modify')
+            ->with($orderItem, 5); // 2 existing + 3 new
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
+
+        $body = json_encode(['items' => [['variation_id' => 456, 'quantity' => 3]]]);
+        $request = Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body);
+
+        $response = $this->controller->add($request);
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testAddHandlesFlushException(): void
+    {
+        $cart = $this->createMockCart([], 0, 'EUR');
+        $this->cartContext->method('getCart')->willReturn($cart);
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn(456);
+        $this->variantRepository->method('find')->with(456)->willReturn($variant);
+
+        $newOrderItem = $this->createMock(OrderItemInterface::class);
+        $this->orderItemFactory->method('createNew')->willReturn($newOrderItem);
+
+        $this->entityManager->method('flush')->willThrowException(
+            new \Exception('Product variant has no price for channel')
+        );
+
+        $body = json_encode(['items' => [['variation_id' => 456, 'quantity' => 1]]]);
+        $request = Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body);
+
+        $response = $this->controller->add($request);
+
+        $this->assertSame(Response::HTTP_INTERNAL_SERVER_ERROR, $response->getStatusCode());
+        $data = json_decode($response->getContent(), true);
+        $this->assertFalse($data['success']);
+    }
+
+    public function testCartOperationEventCanCancelAdd(): void
+    {
+        $dispatcher = $this->createMock(\Symfony\Contracts\EventDispatcher\EventDispatcherInterface::class);
+        $dispatcher->method('dispatch')->willReturnCallback(
+            function ($event) {
+                if ($event instanceof \Emporiqa\SyliusPlugin\Event\CartOperationEvent) {
+                    $event->cancelOperation('Not allowed');
+                }
+                return $event;
+            }
+        );
+
+        $controller = new CartController(
+            $this->cartContext,
+            $this->orderModifier,
+            $this->orderItemQuantityModifier,
+            $this->orderItemFactory,
+            $this->variantRepository,
+            $this->entityManager,
+            $this->router,
+            null,
+            null,
+            null,
+            $dispatcher,
+        );
+
+        $body = json_encode(['items' => [['variation_id' => 456, 'quantity' => 1]]]);
+        $request = Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body);
+
+        $response = $controller->add($request);
+
+        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        $data = json_decode($response->getContent(), true);
+        $this->assertSame('Not allowed', $data['error']);
+    }
+
+    public function testGetCartWithJPYCurrency(): void
+    {
+        $orderItem = $this->createMockOrderItem(456, 1, 1999);
+        $cart = $this->createMockCart([$orderItem], 1999, 'JPY');
+        $this->cartContext->method('getCart')->willReturn($cart);
+        $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
+
+        $response = $this->controller->getCart(new Request());
+        $data = json_decode($response->getContent(), true);
+
+        // JSON roundtrip converts 1999.0 to int 1999
+        $this->assertEquals(1999, $data['cart']['total']);
+        $this->assertEquals(1999, $data['cart']['items'][0]['unit_price']);
+        $this->assertSame('JPY', $data['cart']['currency']);
+    }
+
+    public function testRemoveRejectsMissingVariationId(): void
+    {
+        $body = json_encode(['some_field' => 'value']);
+        $request = Request::create('/emporiqa/api/cart/remove', 'POST', [], [], [], [], $body);
+
+        $response = $this->controller->remove($request);
+
+        $this->assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        $data = json_decode($response->getContent(), true);
+        $this->assertSame('Missing variation_id', $data['error']);
+    }
+
+    public function testUpdateReturnsNotFoundWhenItemNotInCart(): void
+    {
+        $cart = $this->createMockCart([], 0, 'EUR');
+        $this->cartContext->method('getCart')->willReturn($cart);
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn(999);
+        $this->variantRepository->method('find')->with(999)->willReturn($variant);
+
+        $body = json_encode(['variation_id' => 999, 'quantity' => 3]);
+        $request = Request::create('/emporiqa/api/cart/update', 'POST', [], [], [], [], $body);
+
+        $response = $this->controller->update($request);
+
+        $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+        $data = json_decode($response->getContent(), true);
+        $this->assertSame('Item not found in cart', $data['error']);
+    }
 }

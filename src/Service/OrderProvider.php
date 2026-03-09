@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Service;
 
+use Emporiqa\SyliusPlugin\Service\CurrencyHelper;
 use Sylius\Component\Core\Model\OrderInterface;
 use Sylius\Component\Core\Model\ShipmentInterface;
 use Sylius\Component\Core\OrderPaymentStates;
@@ -40,12 +41,14 @@ class OrderProvider implements OrderProviderInterface
             }
         }
 
+        $currencyCode = $order->getCurrencyCode() ?? '';
+
         $items = [];
         foreach ($order->getItems() as $item) {
             $items[] = [
                 'name' => $item->getProductName() ?? $item->getVariantName(),
                 'quantity' => $item->getQuantity(),
-                'price' => round($item->getUnitPrice() / 100, 2),
+                'price' => CurrencyHelper::toCurrencyUnits($item->getUnitPrice(), $currencyCode),
             ];
         }
 
@@ -57,8 +60,8 @@ class OrderProvider implements OrderProviderInterface
             'placed_at' => $order->getCheckoutCompletedAt()?->format('c'),
             'items' => $items,
             'shipping' => $shipping,
-            'total' => round($order->getTotal() / 100, 2),
-            'currency' => $order->getCurrencyCode(),
+            'total' => CurrencyHelper::toCurrencyUnits($order->getTotal(), $currencyCode),
+            'currency' => $currencyCode,
         ];
     }
 

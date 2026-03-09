@@ -6,6 +6,7 @@ namespace Emporiqa\SyliusPlugin\Controller;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Emporiqa\SyliusPlugin\Event\CartOperationEvent;
+use Emporiqa\SyliusPlugin\Service\CurrencyHelper;
 use Psr\Log\LoggerInterface;
 use Sylius\Component\Core\Model\OrderInterface;
 use Sylius\Component\Core\Model\OrderItemInterface;
@@ -379,6 +380,7 @@ class CartController
 
     private function formatCart(OrderInterface $cart, ?string $locale = null): array
     {
+        $currencyCode = $cart->getCurrencyCode() ?? '';
         $items = [];
         $itemCount = 0;
 
@@ -405,7 +407,7 @@ class CartController
                 'variation_id' => $variant ? 'variation-' . $variant->getId() : null,
                 'name' => $orderItem->getProductName() ?? '',
                 'quantity' => $qty,
-                'unit_price' => round($orderItem->getUnitPrice() / 100, 2),
+                'unit_price' => CurrencyHelper::toCurrencyUnits($orderItem->getUnitPrice(), $currencyCode),
                 'image_url' => $imageUrl,
                 'product_url' => $productUrl,
             ];
@@ -415,8 +417,8 @@ class CartController
         return [
             'items' => $items,
             'item_count' => $itemCount,
-            'total' => round($cart->getTotal() / 100, 2),
-            'currency' => $cart->getCurrencyCode() ?? '',
+            'total' => CurrencyHelper::toCurrencyUnits($cart->getTotal(), $currencyCode),
+            'currency' => $currencyCode,
         ];
     }
 

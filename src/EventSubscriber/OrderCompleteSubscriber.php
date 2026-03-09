@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\EventSubscriber;
 
+use Emporiqa\SyliusPlugin\Service\CurrencyHelper;
 use Emporiqa\SyliusPlugin\Service\WebhookEventQueue;
 use Psr\Log\LoggerInterface;
 use Sylius\Component\Core\Model\OrderInterface;
@@ -54,6 +55,8 @@ class OrderCompleteSubscriber implements EventSubscriberInterface
 
     private function sendOrderCompletedWebhook(OrderInterface $order): void
     {
+        $currencyCode = $order->getCurrencyCode() ?? '';
+
         $items = [];
         foreach ($order->getItems() as $orderItem) {
             $variant = $orderItem->getVariant();
@@ -61,7 +64,7 @@ class OrderCompleteSubscriber implements EventSubscriberInterface
             $items[] = [
                 'product_id' => $variant ? (string) $variant->getId() : '',
                 'quantity' => $orderItem->getQuantity(),
-                'price' => round($orderItem->getUnitPrice() / 100, 2),
+                'price' => CurrencyHelper::toCurrencyUnits($orderItem->getUnitPrice(), $currencyCode),
             ];
         }
 
@@ -77,8 +80,8 @@ class OrderCompleteSubscriber implements EventSubscriberInterface
 
         $data = [
             'order_id' => (string) ($order->getNumber() ?? $order->getId()),
-            'total' => round($order->getTotal() / 100, 2),
-            'currency' => $order->getCurrencyCode() ?? '',
+            'total' => CurrencyHelper::toCurrencyUnits($order->getTotal(), $currencyCode),
+            'currency' => $currencyCode,
             'emporiqa_session_id' => $sessionId,
             'items' => $items,
         ];
