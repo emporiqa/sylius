@@ -20,7 +20,7 @@ services:
             $channelMapping: '%emporiqa.channel_mapping%'
             $baseUrl: '%emporiqa.base_url%'
             $brandAttributeCode: '%emporiqa.brand_attribute_code%'
-            $channelRepository: '@sylius.repository.channel'
+            $channelRepository: '@?sylius.repository.channel'
 
     Emporiqa\SyliusPlugin\Service\ProductFormatterInterface: '@Emporiqa\SyliusPlugin\Service\ProductFormatter'
 

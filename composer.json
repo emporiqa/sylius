@@ -21,7 +21,7 @@
     "require": {
         "php": ">=8.1",
         "sylius/sylius": "^1.12 || ^2.0",
-        "doctrine/doctrine-bundle": "^2.8",
+        "doctrine/doctrine-bundle": "^2.9 || ^3.0",
         "symfony/http-client": "^6.4 || ^7.0",
         "symfony/security-bundle": "^6.2 || ^7.0"
     },

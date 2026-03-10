@@ -51,23 +51,31 @@ class SyncAllCommand extends Command
         $productsResult = $productsCommand->run($productsInput, $output);
 
         $io->newLine();
-        $io->section('Syncing Pages');
-        $pagesCommand = $application->find('emporiqa:sync:pages');
-        $pagesInput = new ArrayInput([
-            '--batch-size' => $batchSize,
-            '--dry-run' => $dryRun,
-            '--no-session' => $noSession,
-        ]);
-        $pagesResult = $pagesCommand->run($pagesInput, $output);
+        $pagesResult = Command::SUCCESS;
+
+        try {
+            $pagesCommand = $application->find('emporiqa:sync:pages');
+            $io->section('Syncing Pages');
+            $pagesInput = new ArrayInput([
+                '--batch-size' => $batchSize,
+                '--dry-run' => $dryRun,
+                '--no-session' => $noSession,
+            ]);
+            $pagesResult = $pagesCommand->run($pagesInput, $output);
+        } catch (\Symfony\Component\Console\Exception\CommandNotFoundException) {
+            $io->note('Page sync not configured — skipping.');
+        }
 
         $io->newLine();
 
         if ($productsResult === Command::SUCCESS && $pagesResult === Command::SUCCESS) {
             $io->success('All data synced successfully!');
+            $io->note("Emporiqa will now process and enhance the synced data. This may take a few minutes depending on the volume.\nCheck the results at:\n  Products: https://emporiqa.com/platform/products/\n  Pages:    https://emporiqa.com/platform/pages/");
             return Command::SUCCESS;
         }
 
         $io->warning('Sync completed with some errors');
+        $io->note('Successfully synced items will be processed and enhanced by Emporiqa. This may take a few minutes. You can check the results in the Products/Pages list in your Emporiqa dashboard.');
         return Command::FAILURE;
     }
 }

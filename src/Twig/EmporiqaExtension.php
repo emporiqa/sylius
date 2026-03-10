@@ -20,7 +20,7 @@ class EmporiqaExtension extends AbstractExtension
         private string $webhookUrl,
         private string $webhookSecret,
         private RequestStack $requestStack,
-        private Security $security,
+        private ?Security $security = null,
         private array $channelMapping = [],
         private bool $cartEnabled = true,
         private ?ChannelContextInterface $channelContext = null,
@@ -81,7 +81,7 @@ class EmporiqaExtension extends AbstractExtension
 
     private function buildWidgetConfig(bool $cartEnabled): array
     {
-        $user = $this->security->getUser();
+        $user = $this->security?->getUser();
 
         return [
             'language' => $this->getLocale(),
@@ -116,7 +116,7 @@ class EmporiqaExtension extends AbstractExtension
             'channel' => $this->getCurrentChannelKey(),
         ];
 
-        $user = $this->security->getUser();
+        $user = $this->security?->getUser();
         if ($user !== null && !empty($this->webhookSecret)) {
             $params['user_id'] = UserTokenGenerator::generate(
                 $user->getUserIdentifier(),
@@ -188,7 +188,10 @@ class EmporiqaExtension extends AbstractExtension
 
         $first = true;
         foreach ($channels as $ch) {
-            $code = $ch->getCode();
+            $code = $ch->getCode() ?? '';
+            if ($code === '') {
+                continue;
+            }
             if ($first) {
                 if ($code === $currentCode) {
                     return '';

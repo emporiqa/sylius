@@ -262,7 +262,7 @@ class ProductFormatter implements ProductFormatterInterface
                 $lang = $locale;
 
                 $variantOptionAttrs = $this->getVariantOptionAttributes($variant, $locale);
-                $baseName = $translation?->getName() ?? $variant->getCode();
+                $baseName = $translation?->getName() ?? $variant->getCode() ?? '';
                 $variantName = $baseName;
                 if (!empty($variantOptionAttrs)) {
                     $variantName .= ' - ' . implode(' / ', $variantOptionAttrs);
@@ -290,7 +290,7 @@ class ProductFormatter implements ProductFormatterInterface
             'type' => 'product.updated',
             'data' => [
                 'identification_number' => 'variation-' . $variant->getId(),
-                'sku' => $variant->getCode(),
+                'sku' => $variant->getCode() ?? '',
                 'channels' => $channelKeys,
                 'names' => $names,
                 'descriptions' => $descriptions,
@@ -302,7 +302,7 @@ class ProductFormatter implements ProductFormatterInterface
                 'stock_quantities' => $stockQuantities,
                 'images' => $images,
                 'attributes' => $attributes,
-                'parent_sku' => $product->getCode(),
+                'parent_sku' => $product->getCode() ?? '',
                 'is_parent' => false,
                 'variation_attributes' => new \stdClass(),
             ],
@@ -312,8 +312,9 @@ class ProductFormatter implements ProductFormatterInterface
     private function resolveChannelKey(ChannelInterface $channel): string
     {
         $mapping = $this->getChannelMapping();
+        $code = $channel->getCode() ?? '';
 
-        return $mapping[$channel->getCode()] ?? '';
+        return $mapping[$code] ?? '';
     }
 
     private function getChannelMapping(): array
@@ -345,7 +346,10 @@ class ProductFormatter implements ProductFormatterInterface
         $mapping = [];
         $first = true;
         foreach ($channels as $ch) {
-            $code = $ch->getCode();
+            $code = $ch->getCode() ?? '';
+            if ($code === '') {
+                continue;
+            }
             if ($first) {
                 $mapping[$code] = '';
                 $first = false;
@@ -369,7 +373,10 @@ class ProductFormatter implements ProductFormatterInterface
     {
         $channelLocales = [];
         foreach ($channel->getLocales() as $locale) {
-            $channelLocales[] = $locale->getCode();
+            $code = $locale->getCode();
+            if ($code !== null) {
+                $channelLocales[] = $code;
+            }
         }
 
         if (empty($channelLocales)) {
@@ -394,10 +401,10 @@ class ProductFormatter implements ProductFormatterInterface
 
         $currencyCode = $channel->getBaseCurrency()?->getCode() ?? '';
 
-        $currentPrice = $channelPricing->getPrice()
+        $currentPrice = $channelPricing->getPrice() !== null
             ? CurrencyHelper::toCurrencyUnits($channelPricing->getPrice(), $currencyCode)
             : null;
-        $regularPrice = $channelPricing->getOriginalPrice()
+        $regularPrice = $channelPricing->getOriginalPrice() !== null
             ? CurrencyHelper::toCurrencyUnits($channelPricing->getOriginalPrice(), $currencyCode)
             : null;
         if ($regularPrice === null && $currentPrice !== null) {
@@ -414,7 +421,7 @@ class ProductFormatter implements ProductFormatterInterface
             'regular_price' => $regularPrice,
         ];
 
-        if (method_exists($channelPricing, 'getMinimumPrice') && $channelPricing->getMinimumPrice()) {
+        if (method_exists($channelPricing, 'getMinimumPrice') && $channelPricing->getMinimumPrice() !== null) {
             $priceData['minimum_price'] = CurrencyHelper::toCurrencyUnits($channelPricing->getMinimumPrice(), $currencyCode);
         }
 

@@ -106,11 +106,15 @@ class PageFormatter implements PageFormatterInterface
         $keys = [];
         $first = true;
         foreach ($channels as $ch) {
+            $code = $ch->getCode() ?? '';
+            if ($code === '') {
+                continue;
+            }
             if ($first) {
                 $keys[] = '';
                 $first = false;
             } else {
-                $keys[] = strtolower($ch->getCode());
+                $keys[] = strtolower($code);
             }
         }
 

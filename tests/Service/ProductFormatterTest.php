@@ -1001,6 +1001,191 @@ class ProductFormatterTest extends TestCase
         $this->assertArrayNotHasKey('de_DE', $events[0]['data']['names']['']);
     }
 
+    public function testFormatFreeProductPriceZero(): void
+    {
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('Free Sample');
+        $translation->method('getDescription')->willReturn('A free product');
+        $translation->method('getSlug')->willReturn('free-sample');
+
+        $channelPricing = $this->createMock(ChannelPricingInterface::class);
+        $channelPricing->method('getPrice')->willReturn(0);
+        $channelPricing->method('getOriginalPrice')->willReturn(null);
+
+        $channel = $this->createChannel();
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getCode')->willReturn('FREE-001');
+        $variant->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant->method('isEnabled')->willReturn(true);
+        $variant->method('isTracked')->willReturn(false);
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+        $product->method('getCode')->willReturn('FREE');
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
+        $product->method('getMainTaxon')->willReturn(null);
+        $product->method('getAttributes')->willReturn(new ArrayCollection());
+        $product->method('getImages')->willReturn(new ArrayCollection());
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/free-sample');
+
+        $events = $this->formatter->format($product);
+
+        $this->assertCount(1, $events);
+        $prices = $events[0]['data']['prices'][''];
+        $this->assertCount(1, $prices);
+        $this->assertEquals(0.0, $prices[0]['current_price']);
+        $this->assertEquals(0.0, $prices[0]['regular_price']);
+        $this->assertSame('EUR', $prices[0]['currency']);
+    }
+
+    public function testFormatFreeProductWithOriginalPrice(): void
+    {
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('Sale Product');
+        $translation->method('getDescription')->willReturn('');
+        $translation->method('getSlug')->willReturn('sale');
+
+        $channelPricing = $this->createMock(ChannelPricingInterface::class);
+        $channelPricing->method('getPrice')->willReturn(0);
+        $channelPricing->method('getOriginalPrice')->willReturn(1999);
+
+        $channel = $this->createChannel();
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getCode')->willReturn('SALE-001');
+        $variant->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant->method('isEnabled')->willReturn(true);
+        $variant->method('isTracked')->willReturn(false);
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+        $product->method('getCode')->willReturn('SALE');
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
+        $product->method('getMainTaxon')->willReturn(null);
+        $product->method('getAttributes')->willReturn(new ArrayCollection());
+        $product->method('getImages')->willReturn(new ArrayCollection());
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/sale');
+
+        $events = $this->formatter->format($product);
+
+        $prices = $events[0]['data']['prices'][''];
+        $this->assertCount(1, $prices);
+        $this->assertEquals(0.0, $prices[0]['current_price']);
+        $this->assertSame(19.99, $prices[0]['regular_price']);
+    }
+
+    public function testAutoDetectSkipsChannelsWithNullCode(): void
+    {
+        $ch1 = $this->createMock(\Sylius\Component\Channel\Model\ChannelInterface::class);
+        $ch1->method('getCode')->willReturn('default');
+
+        $ch2 = $this->createMock(\Sylius\Component\Channel\Model\ChannelInterface::class);
+        $ch2->method('getCode')->willReturn(null);
+
+        $ch3 = $this->createMock(\Sylius\Component\Channel\Model\ChannelInterface::class);
+        $ch3->method('getCode')->willReturn('B2B');
+
+        $channelRepo = $this->createMock(\Sylius\Component\Channel\Repository\ChannelRepositoryInterface::class);
+        $channelRepo->method('findAll')->willReturn([$ch1, $ch2, $ch3]);
+
+        $formatter = new ProductFormatter(
+            $this->router,
+            ['en_US'],
+            [],
+            '',
+            'brand',
+            null,
+            $channelRepo,
+        );
+
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('Test');
+        $translation->method('getDescription')->willReturn('');
+        $translation->method('getSlug')->willReturn('test');
+
+        $channelPricing = $this->createMock(ChannelPricingInterface::class);
+        $channelPricing->method('getPrice')->willReturn(1000);
+        $channelPricing->method('getOriginalPrice')->willReturn(null);
+
+        $defaultChannel = $this->createChannel('default', 'EUR');
+        $b2bChannel = $this->createChannel('B2B', 'USD');
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getCode')->willReturn('T-001');
+        $variant->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant->method('isEnabled')->willReturn(true);
+        $variant->method('isTracked')->willReturn(false);
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+        $product->method('getCode')->willReturn('T');
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$defaultChannel, $b2bChannel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
+        $product->method('getMainTaxon')->willReturn(null);
+        $product->method('getAttributes')->willReturn(new ArrayCollection());
+        $product->method('getImages')->willReturn(new ArrayCollection());
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/test');
+
+        $events = $formatter->format($product);
+
+        // Null-code channel is skipped, so we get "" (default) and "b2b"
+        $this->assertSame(['', 'b2b'], $events[0]['data']['channels']);
+    }
+
+    public function testFormatProductWithNullCode(): void
+    {
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('No Code');
+        $translation->method('getDescription')->willReturn('');
+        $translation->method('getSlug')->willReturn('no-code');
+
+        $channelPricing = $this->createMock(ChannelPricingInterface::class);
+        $channelPricing->method('getPrice')->willReturn(1000);
+        $channelPricing->method('getOriginalPrice')->willReturn(null);
+
+        $channel = $this->createChannel();
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getCode')->willReturn(null);
+        $variant->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant->method('isEnabled')->willReturn(true);
+        $variant->method('isTracked')->willReturn(false);
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+        $product->method('getCode')->willReturn(null);
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
+        $product->method('getMainTaxon')->willReturn(null);
+        $product->method('getAttributes')->willReturn(new ArrayCollection());
+        $product->method('getImages')->willReturn(new ArrayCollection());
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/no-code');
+
+        $events = $this->formatter->format($product);
+
+        $this->assertCount(1, $events);
+        $this->assertSame('', $events[0]['data']['sku']);
+    }
+
     public function testFormatVariantNoPriceReturnsEmptyPrices(): void
     {
         $translation = $this->createMock(ProductTranslationInterface::class);

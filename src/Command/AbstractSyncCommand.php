@@ -153,10 +153,12 @@ abstract class AbstractSyncCommand extends Command
         $io->newLine();
         if ($errorCount === 0) {
             $io->success(sprintf('%s sync completed successfully!', $entityLabel));
+            $io->note(sprintf('Emporiqa will now process and enhance the synced data. This may take a few minutes depending on the volume. Check the results at: https://emporiqa.com/platform/%s/', $entityName));
             return Command::SUCCESS;
         }
 
         $io->warning(sprintf('%s sync completed with some errors', $entityLabel));
+        $io->note('Successfully synced items will be processed and enhanced by Emporiqa. This may take a few minutes. You can check the results in the Products/Pages list in your Emporiqa dashboard.');
         return Command::FAILURE;
     }
 

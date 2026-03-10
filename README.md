@@ -105,6 +105,8 @@ bin/console cache:clear
 | `store_id` | string | `%env(EMPORIQA_STORE_ID)%` | Emporiqa store identifier |
 | `webhook_url` | string | `%env(EMPORIQA_WEBHOOK_URL)%` | Emporiqa webhook endpoint |
 | `webhook_secret` | string | **required** | HMAC-SHA256 signing key for webhook authentication |
+| `base_url` | string | `''` | Base URL for image paths in CLI context (e.g. `https://myshop.com`) |
+| `brand_attribute_code` | string | `'brand'` | Product attribute code used for brand/manufacturer data |
 | `enabled_languages` | string[] | `['en_US', 'de_DE']` | Sylius locale codes to sync |
 | `channel_mapping` | map | `{}` | Maps Sylius channel codes to Emporiqa channel keys |
 | `sync.products` | bool | `true` | Enable automatic product synchronization |
@@ -120,6 +122,8 @@ emporiqa:
     store_id: '%env(EMPORIQA_STORE_ID)%'
     webhook_url: '%env(EMPORIQA_WEBHOOK_URL)%'
     webhook_secret: '%env(EMPORIQA_WEBHOOK_SECRET)%'
+    base_url: 'https://myshop.com'       # optional, for CLI image URLs
+    brand_attribute_code: 'brand'         # optional, product attribute for brand
     enabled_languages: ['en_US', 'de_DE']
     channel_mapping:
         FASHION_WEB: ''       # store-wide (default channel)
@@ -828,6 +832,8 @@ emporiqa/sylius-plugin/
 │   │   ├── PostFormatEvent.php             # Dispatched after entity formatting
 │   │   ├── PreSyncEvent.php                # Dispatched before entity sync
 │   │   └── PreWebhookSendEvent.php         # Dispatched before webhook delivery
+│   ├── Trait/
+│   │   └── TranslationHelperTrait.php      # Shared translation lookup logic
 │   ├── Service/
 │   │   ├── WebhookSender.php               # HTTP client with retry logic
 │   │   ├── WebhookSenderInterface.php
@@ -877,6 +883,7 @@ emporiqa/sylius-plugin/
     │   ├── CartControllerTest.php
     │   └── OrderTrackingControllerTest.php
     ├── Command/
+    │   ├── SyncAllCommandTest.php
     │   └── TestConnectionCommandTest.php
     └── Twig/
         └── EmporiqaExtensionTest.php

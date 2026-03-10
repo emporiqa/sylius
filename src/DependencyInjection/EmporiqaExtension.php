@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\DependencyInjection;
 
+use Emporiqa\SyliusPlugin\Command\SyncPagesCommand;
 use Emporiqa\SyliusPlugin\Controller\CartController;
 use Emporiqa\SyliusPlugin\Controller\OrderTrackingController;
 use Emporiqa\SyliusPlugin\EventListener\PageDoctrineListener;
@@ -46,6 +47,7 @@ class EmporiqaExtension extends Extension
             $this->removeServiceIfExists($container, PageDoctrineListener::class);
             $this->removeServiceIfExists($container, PageUrlResolver::class);
             $this->removeAliasIfExists($container, PageUrlResolverInterface::class);
+            $this->removeServiceIfExists($container, SyncPagesCommand::class);
         }
 
         if (!$config['order_tracking']['enabled']) {

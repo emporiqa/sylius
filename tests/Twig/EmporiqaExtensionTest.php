@@ -507,6 +507,44 @@ class EmporiqaExtensionTest extends TestCase
         $this->assertStringContainsString('user_id=', $html);
     }
 
+    public function testRenderWidgetWithNullSecurity(): void
+    {
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('en');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+
+        $extension = new EmporiqaExtension(
+            'store-123',
+            'https://api.emporiqa.com/webhook',
+            'test-secret',
+            $this->requestStack,
+            null,
+        );
+
+        $html = $extension->renderWidget();
+        $this->assertStringContainsString('store_id=store-123', $html);
+        $this->assertStringNotContainsString('user_id=', $html);
+    }
+
+    public function testRenderCartWidgetWithNullSecurity(): void
+    {
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('en');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+
+        $extension = new EmporiqaExtension(
+            'store-123',
+            'https://api.emporiqa.com/webhook',
+            'test-secret',
+            $this->requestStack,
+            null,
+        );
+
+        $html = $extension->renderCartWidget();
+        $this->assertStringContainsString('"authenticated":false', $html);
+        $this->assertStringNotContainsString('user_id=', $html);
+    }
+
     public function testNoCurrencyOrChannelContextReturnsEmptyValues(): void
     {
         $request = $this->createMock(Request::class);
