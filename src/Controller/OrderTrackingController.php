@@ -57,9 +57,13 @@ class OrderTrackingController
         $orderData = $this->orderProvider->findOrder($orderIdentifier, $userId, $verificationFields);
 
         if ($this->eventDispatcher) {
-            $trackingEvent = new OrderTrackingEvent($orderData, $orderIdentifier, $payload);
-            $this->eventDispatcher->dispatch($trackingEvent, OrderTrackingEvent::NAME);
-            $orderData = $trackingEvent->getOrderData();
+            try {
+                $trackingEvent = new OrderTrackingEvent($orderData, $orderIdentifier, $payload);
+                $this->eventDispatcher->dispatch($trackingEvent, OrderTrackingEvent::NAME);
+                $orderData = $trackingEvent->getOrderData();
+            } catch (\Throwable) {
+                // Listener errors must not fail the order tracking response
+            }
         }
 
         if ($orderData === null) {

@@ -13,7 +13,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 class WebhookSender implements WebhookSenderInterface
 {
-    private const DEFAULT_TIMEOUT = 30;
+    private const DEFAULT_TIMEOUT = 10;
     private const MAX_RETRIES = 2;
     private const RETRY_DELAY_MS = 500;
 

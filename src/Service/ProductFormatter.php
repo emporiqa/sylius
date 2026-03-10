@@ -489,7 +489,8 @@ class ProductFormatter implements ProductFormatterInterface
         $ancestors = [];
         $current = $taxon;
 
-        while ($current !== null) {
+        $depth = 0;
+        while ($current !== null && $depth++ < 50) {
             if ($current->isRoot() && $current !== $taxon) {
                 break;
             }
