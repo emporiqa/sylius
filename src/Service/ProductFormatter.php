@@ -6,7 +6,6 @@ namespace Emporiqa\SyliusPlugin\Service;
 
 use Emporiqa\SyliusPlugin\Trait\TranslationHelperTrait;
 use Psr\Log\LoggerInterface;
-use Sylius\Component\Channel\Repository\ChannelRepositoryInterface;
 use Sylius\Component\Core\Model\ChannelInterface;
 use Sylius\Component\Core\Model\ProductInterface;
 use Sylius\Component\Core\Model\ProductVariantInterface;
@@ -21,16 +20,13 @@ class ProductFormatter implements ProductFormatterInterface
     private const AVAILABILITY_AVAILABLE = 'available';
     private const AVAILABILITY_OUT_OF_STOCK = 'out_of_stock';
 
-    private ?array $resolvedChannelMapping = null;
-
     public function __construct(
         private RouterInterface $router,
+        private ChannelMappingResolver $channelMappingResolver,
         private array $enabledLanguages = [],
-        private array $channelMapping = [],
         private string $baseUrl = '',
         private string $brandAttributeCode = 'brand',
         private ?LoggerInterface $logger = null,
-        private ?ChannelRepositoryInterface $channelRepository = null,
     ) {}
 
     public function format(ProductInterface $product): array
@@ -311,58 +307,7 @@ class ProductFormatter implements ProductFormatterInterface
 
     private function resolveChannelKey(ChannelInterface $channel): string
     {
-        $mapping = $this->getChannelMapping();
-        $code = $channel->getCode() ?? '';
-
-        return $mapping[$code] ?? '';
-    }
-
-    private function getChannelMapping(): array
-    {
-        if ($this->resolvedChannelMapping !== null) {
-            return $this->resolvedChannelMapping;
-        }
-
-        // Explicit mapping configured — use it
-        if (!empty($this->channelMapping)) {
-            $this->resolvedChannelMapping = $this->channelMapping;
-            return $this->resolvedChannelMapping;
-        }
-
-        // Auto-detect from all store channels
-        if ($this->channelRepository === null) {
-            $this->resolvedChannelMapping = [];
-            return $this->resolvedChannelMapping;
-        }
-
-        $channels = $this->channelRepository->findAll();
-        if (count($channels) <= 1) {
-            // Single channel (or none) — map everything to default
-            $this->resolvedChannelMapping = [];
-            return $this->resolvedChannelMapping;
-        }
-
-        // Multiple channels: first → "", rest → lowercased code
-        $mapping = [];
-        $first = true;
-        foreach ($channels as $ch) {
-            $code = $ch->getCode() ?? '';
-            if ($code === '') {
-                continue;
-            }
-            if ($first) {
-                $mapping[$code] = '';
-                $first = false;
-            } else {
-                $mapping[$code] = strtolower($code);
-            }
-        }
-
-        $this->resolvedChannelMapping = $mapping;
-
-        $this->logger?->info('Emporiqa: auto-detected channel mapping', ['mapping' => $mapping]);
-
-        return $this->resolvedChannelMapping;
+        return $this->channelMappingResolver->resolveKey($channel);
     }
 
     /**

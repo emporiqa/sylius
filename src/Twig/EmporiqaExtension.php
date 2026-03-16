@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Twig;
 
+use Emporiqa\SyliusPlugin\Service\ChannelMappingResolver;
 use Emporiqa\SyliusPlugin\Service\UserTokenGenerator;
 use Sylius\Component\Channel\Context\ChannelContextInterface;
-use Sylius\Component\Channel\Repository\ChannelRepositoryInterface;
 use Sylius\Component\Currency\Context\CurrencyContextInterface;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -20,12 +20,11 @@ class EmporiqaExtension extends AbstractExtension
         private string $webhookUrl,
         private string $webhookSecret,
         private RequestStack $requestStack,
+        private ChannelMappingResolver $channelMappingResolver,
         private ?Security $security = null,
-        private array $channelMapping = [],
         private bool $cartEnabled = true,
         private ?ChannelContextInterface $channelContext = null,
         private ?CurrencyContextInterface $currencyContext = null,
-        private ?ChannelRepositoryInterface $channelRepository = null,
     ) {}
 
     public function getFunctions(): array
@@ -162,48 +161,9 @@ class EmporiqaExtension extends AbstractExtension
         }
 
         try {
-            $channel = $this->channelContext->getChannel();
-            $code = $channel->getCode() ?? '';
-
-            if (!empty($this->channelMapping)) {
-                return $this->channelMapping[$code] ?? '';
-            }
-
-            return $this->autoDetectChannelKey($code);
+            return $this->channelMappingResolver->resolveKey($this->channelContext->getChannel());
         } catch (\Throwable) {
             return '';
         }
-    }
-
-    private function autoDetectChannelKey(string $currentCode): string
-    {
-        if ($this->channelRepository === null) {
-            return '';
-        }
-
-        $channels = $this->channelRepository->findAll();
-        if (count($channels) <= 1) {
-            return '';
-        }
-
-        $first = true;
-        foreach ($channels as $ch) {
-            $code = $ch->getCode() ?? '';
-            if ($code === '') {
-                continue;
-            }
-            if ($first) {
-                if ($code === $currentCode) {
-                    return '';
-                }
-                $first = false;
-            } else {
-                if ($code === $currentCode) {
-                    return strtolower($code);
-                }
-            }
-        }
-
-        return '';
     }
 }

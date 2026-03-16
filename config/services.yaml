@@ -14,13 +14,16 @@ services:
 
     Emporiqa\SyliusPlugin\Service\WebhookEventQueue: ~
 
+    Emporiqa\SyliusPlugin\Service\ChannelMappingResolver:
+        arguments:
+            $channelMapping: '%emporiqa.channel_mapping%'
+            $channelRepository: '@?sylius.repository.channel'
+
     Emporiqa\SyliusPlugin\Service\ProductFormatter:
         arguments:
             $enabledLanguages: '%emporiqa.enabled_languages%'
-            $channelMapping: '%emporiqa.channel_mapping%'
             $baseUrl: '%emporiqa.base_url%'
             $brandAttributeCode: '%emporiqa.brand_attribute_code%'
-            $channelRepository: '@?sylius.repository.channel'
 
     Emporiqa\SyliusPlugin\Service\ProductFormatterInterface: '@Emporiqa\SyliusPlugin\Service\ProductFormatter'
 
@@ -31,8 +34,6 @@ services:
     Emporiqa\SyliusPlugin\Service\PageFormatter:
         arguments:
             $enabledLanguages: '%emporiqa.enabled_languages%'
-            $channelMapping: '%emporiqa.channel_mapping%'
-            $channelRepository: '@?sylius.repository.channel'
 
     Emporiqa\SyliusPlugin\Service\PageFormatterInterface: '@Emporiqa\SyliusPlugin\Service\PageFormatter'
 
@@ -54,11 +55,9 @@ services:
             $storeId: '%emporiqa.store_id%'
             $webhookUrl: '%emporiqa.webhook_url%'
             $webhookSecret: '%emporiqa.webhook_secret%'
-            $channelMapping: '%emporiqa.channel_mapping%'
             $cartEnabled: '%emporiqa.cart.enabled%'
             $channelContext: '@?Sylius\Component\Channel\Context\ChannelContextInterface'
             $currencyContext: '@?Sylius\Component\Currency\Context\CurrencyContextInterface'
-            $channelRepository: '@?sylius.repository.channel'
 
     Emporiqa\SyliusPlugin\Command\SyncProductsCommand: ~
 

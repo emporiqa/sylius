@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Tests\Twig;
 
+use Emporiqa\SyliusPlugin\Service\ChannelMappingResolver;
 use Emporiqa\SyliusPlugin\Twig\EmporiqaExtension;
 use PHPUnit\Framework\TestCase;
 use Sylius\Component\Channel\Context\ChannelContextInterface;
@@ -42,8 +43,8 @@ class EmporiqaExtensionTest extends TestCase
             $webhookUrl,
             $webhookSecret,
             $this->requestStack,
+            new ChannelMappingResolver($channelMapping),
             $this->security,
-            $channelMapping,
             $cartEnabled,
             $channelContext,
             $currencyContext,
@@ -378,12 +379,10 @@ class EmporiqaExtensionTest extends TestCase
             'https://api.emporiqa.com/webhook',
             'test-secret',
             $this->requestStack,
+            new ChannelMappingResolver([], $channelRepo),
             $this->security,
-            [],
             true,
             $this->channelContext,
-            null,
-            $channelRepo,
         );
 
         $url = $extension->getWidgetUrl();
@@ -414,12 +413,10 @@ class EmporiqaExtensionTest extends TestCase
             'https://api.emporiqa.com/webhook',
             'test-secret',
             $this->requestStack,
+            new ChannelMappingResolver([], $channelRepo),
             $this->security,
-            [],
             true,
             $this->channelContext,
-            null,
-            $channelRepo,
         );
 
         $url = $extension->getWidgetUrl();
@@ -448,12 +445,10 @@ class EmporiqaExtensionTest extends TestCase
             'https://api.emporiqa.com/webhook',
             'test-secret',
             $this->requestStack,
+            new ChannelMappingResolver([], $channelRepo),
             $this->security,
-            [],
             true,
             $this->channelContext,
-            null,
-            $channelRepo,
         );
 
         $url = $extension->getWidgetUrl();
@@ -518,6 +513,7 @@ class EmporiqaExtensionTest extends TestCase
             'https://api.emporiqa.com/webhook',
             'test-secret',
             $this->requestStack,
+            new ChannelMappingResolver(),
             null,
         );
 
@@ -537,6 +533,7 @@ class EmporiqaExtensionTest extends TestCase
             'https://api.emporiqa.com/webhook',
             'test-secret',
             $this->requestStack,
+            new ChannelMappingResolver(),
             null,
         );
 

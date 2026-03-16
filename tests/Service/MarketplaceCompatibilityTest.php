@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\Tests\Service;
 
 use Doctrine\Common\Collections\ArrayCollection;
+use Emporiqa\SyliusPlugin\Service\ChannelMappingResolver;
 use Emporiqa\SyliusPlugin\Service\ProductFormatter;
 use PHPUnit\Framework\TestCase;
 use Sylius\Component\Channel\Repository\ChannelRepositoryInterface;
@@ -199,7 +200,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testFullSchemaCompliance(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US', 'de_DE'], ['WEB' => '']);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(['WEB' => '']), ['en_US', 'de_DE']);
 
         $channel = $this->createChannel('WEB', 'EUR', ['en_US', 'de_DE']);
 
@@ -339,7 +340,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testJsonSerializationFormat(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
 
         $channel = $this->createChannel('DEFAULT', 'USD', ['en_US']);
         $pricing = $this->createPricing(1000);
@@ -398,10 +399,10 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testMultiChannelDifferentCurrenciesAndLocales(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US', 'de_DE', 'fr_FR'], [
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver([
             'WEB_EU' => '',
             'WEB_US' => 'us',
-        ]);
+        ]), ['en_US', 'de_DE', 'fr_FR']);
 
         $euChannel = $this->createChannel('WEB_EU', 'EUR', ['en_US', 'de_DE']);
         $usChannel = $this->createChannel('WEB_US', 'USD', ['en_US']);
@@ -462,7 +463,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testVariationAttributeNamesMatchAttributeKeysPerLanguage(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US', 'de_DE'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US', 'de_DE']);
         $channel = $this->createChannel('DEFAULT', 'EUR', ['en_US', 'de_DE']);
 
         $colorOption = $this->createOption('color', 'Color', 'Farbe');
@@ -523,7 +524,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testCategoryHierarchyPath(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US', 'de_DE'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US', 'de_DE']);
         $channel = $this->createChannel('DEFAULT', 'EUR', ['en_US', 'de_DE']);
         $pricing = $this->createPricing(1000);
 
@@ -563,7 +564,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testProductWithNoCategories(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
         $channel = $this->createChannel('DEFAULT', 'EUR', ['en_US']);
         $pricing = $this->createPricing(1000);
 
@@ -595,7 +596,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testProductWithNoImages(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
         $channel = $this->createChannel('DEFAULT', 'EUR', ['en_US']);
         $pricing = $this->createPricing(1000);
 
@@ -627,7 +628,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testProductWithNoPricing(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
         $channel = $this->createChannel('DEFAULT', 'EUR', ['en_US']);
 
         $variant = $this->createMock(ProductVariantInterface::class);
@@ -658,7 +659,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testDisabledProductAvailability(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
         $channel = $this->createChannel('DEFAULT', 'EUR', ['en_US']);
         $pricing = $this->createPricing(1000);
 
@@ -690,7 +691,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testDisabledVariantAvailability(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
         $channel = $this->createChannel('DEFAULT', 'EUR', ['en_US']);
         $pricing = $this->createPricing(1000);
 
@@ -737,7 +738,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testUnmappedChannelsDefaultToEmptyKey(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
         $channel = $this->createChannel('SOME_CHANNEL', 'GBP', ['en_US']);
         $pricing = $this->createPricing(1500);
 
@@ -774,7 +775,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testMultipleUnmappedChannelsCollapse(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
 
         $ch1 = $this->createChannel('CH_A', 'EUR', ['en_US']);
         $ch2 = $this->createChannel('CH_B', 'USD', ['en_US']);
@@ -822,7 +823,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testDeletionEventMinimalPayload(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US', 'de_DE'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US', 'de_DE']);
 
         $variant = $this->createMock(ProductVariantInterface::class);
         $variant->method('getId')->willReturn(10);
@@ -850,7 +851,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testProductWithNoChannels(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
 
         $product = $this->createMock(ProductInterface::class);
         $product->method('getId')->willReturn(1);
@@ -865,7 +866,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testMissingTranslationSkipsLanguage(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US', 'de_DE', 'fr_FR'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US', 'de_DE', 'fr_FR']);
         $channel = $this->createChannel('DEFAULT', 'EUR', ['en_US', 'de_DE', 'fr_FR']);
         $pricing = $this->createPricing(1000);
 
@@ -909,7 +910,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testJsonRoundtripIntegrity(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US', 'de_DE'], ['WEB' => '']);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(['WEB' => '']), ['en_US', 'de_DE']);
         $channel = $this->createChannel('WEB', 'EUR', ['en_US', 'de_DE']);
 
         $option = $this->createOption('color', 'Color', 'Farbe');
@@ -1040,7 +1041,7 @@ class MarketplaceCompatibilityTest extends TestCase
         $channelRepo->method('findAll')->willReturn([$channel]);
 
         $formatter = new ProductFormatter(
-            $this->router, ['en_US'], [], '', 'brand', null, $channelRepo,
+            $this->router, new ChannelMappingResolver([], $channelRepo), ['en_US'],
         );
 
         $product = $this->createSimpleProduct($channel, $this->createPricing(1000));
@@ -1063,7 +1064,7 @@ class MarketplaceCompatibilityTest extends TestCase
         $channelRepo->method('findAll')->willReturn([$webChannel, $b2bChannel]);
 
         $formatter = new ProductFormatter(
-            $this->router, ['en_US'], [], '', 'brand', null, $channelRepo,
+            $this->router, new ChannelMappingResolver([], $channelRepo), ['en_US'],
         );
 
         $eurPricing = $this->createPricing(4999);
@@ -1099,12 +1100,8 @@ class MarketplaceCompatibilityTest extends TestCase
 
         $formatter = new ProductFormatter(
             $this->router,
+            new ChannelMappingResolver(['WEB_EU' => 'storefront', 'B2B' => 'wholesale']),
             ['en_US'],
-            ['WEB_EU' => 'storefront', 'B2B' => 'wholesale'],
-            '',
-            'brand',
-            null,
-            $channelRepo,
         );
 
         $eurPricing = $this->createPricing(4999);
@@ -1135,7 +1132,7 @@ class MarketplaceCompatibilityTest extends TestCase
         $channelRepo->expects($this->once())->method('findAll')->willReturn([$channel]);
 
         $formatter = new ProductFormatter(
-            $this->router, ['en_US'], [], '', 'brand', null, $channelRepo,
+            $this->router, new ChannelMappingResolver([], $channelRepo), ['en_US'],
         );
 
         $product = $this->createSimpleProduct($channel, $pricing);
@@ -1154,7 +1151,7 @@ class MarketplaceCompatibilityTest extends TestCase
         $ch2 = $this->createChannel('CH_B', 'USD', ['en_US']);
 
         // No channel repository — null
-        $formatter = new ProductFormatter($this->router, ['en_US'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
 
         $eurPricing = $this->createPricing(1000);
         $usdPricing = $this->createPricing(1200);

@@ -7,20 +7,17 @@ namespace Emporiqa\SyliusPlugin\Service;
 use Emporiqa\SyliusPlugin\Model\PageInterface;
 use Emporiqa\SyliusPlugin\Trait\TranslationHelperTrait;
 use Psr\Log\LoggerInterface;
-use Sylius\Component\Channel\Repository\ChannelRepositoryInterface;
+use Sylius\Component\Channel\Model\ChannelsAwareInterface;
 
 class PageFormatter implements PageFormatterInterface
 {
     use TranslationHelperTrait;
 
-    private ?array $resolvedChannelKeys = null;
-
     public function __construct(
         private PageUrlResolverInterface $urlResolver,
+        private ChannelMappingResolver $channelMappingResolver,
         private array $enabledLanguages = [],
-        private array $channelMapping = [],
         private ?LoggerInterface $logger = null,
-        private ?ChannelRepositoryInterface $channelRepository = null,
     ) {}
 
     public function format(PageInterface $page): array
@@ -37,7 +34,11 @@ class PageFormatter implements PageFormatterInterface
             return [];
         }
 
-        $channelKeys = $this->getAllChannelKeys();
+        $channelKeys = $this->getChannelKeysForPage($page);
+        if (empty($channelKeys)) {
+            $this->logger?->debug('Page has no channels, skipping', ['page_id' => $page->getId()]);
+            return [];
+        }
 
         $titles = [];
         $contents = [];
@@ -80,46 +81,26 @@ class PageFormatter implements PageFormatterInterface
         ];
     }
 
-    private function getAllChannelKeys(): array
+    private function getChannelKeysForPage(PageInterface $page): array
     {
-        if ($this->resolvedChannelKeys !== null) {
-            return $this->resolvedChannelKeys;
+        if (!$page instanceof ChannelsAwareInterface) {
+            return $this->channelMappingResolver->getAllKeys() ?: [''];
         }
 
-        if (!empty($this->channelMapping)) {
-            $this->resolvedChannelKeys = array_unique(array_values($this->channelMapping));
-            return $this->resolvedChannelKeys;
+        $channels = $page->getChannels();
+        if ($channels->isEmpty()) {
+            return [];
         }
 
-        if ($this->channelRepository === null) {
-            $this->resolvedChannelKeys = [''];
-            return $this->resolvedChannelKeys;
-        }
-
-        $channels = $this->channelRepository->findAll();
-        if (count($channels) <= 1) {
-            $this->resolvedChannelKeys = [''];
-            return $this->resolvedChannelKeys;
-        }
-
-        // Same convention as ProductFormatter: first channel → "", rest → lowercased code
         $keys = [];
-        $first = true;
-        foreach ($channels as $ch) {
-            $code = $ch->getCode() ?? '';
-            if ($code === '') {
-                continue;
-            }
-            if ($first) {
-                $keys[] = '';
-                $first = false;
-            } else {
-                $keys[] = strtolower($code);
+        foreach ($channels as $channel) {
+            $empKey = $this->channelMappingResolver->resolveKey($channel);
+            if (!in_array($empKey, $keys, true)) {
+                $keys[] = $empKey;
             }
         }
 
-        $this->resolvedChannelKeys = $keys;
-        return $this->resolvedChannelKeys;
+        return $keys;
     }
 
     public function formatForDeletion(PageInterface $page): array

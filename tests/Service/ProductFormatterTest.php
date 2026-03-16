@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\Tests\Service;
 
 use Doctrine\Common\Collections\ArrayCollection;
+use Emporiqa\SyliusPlugin\Service\ChannelMappingResolver;
 use Emporiqa\SyliusPlugin\Service\ProductFormatter;
 use PHPUnit\Framework\TestCase;
 use Sylius\Component\Core\Model\ChannelInterface;
@@ -34,8 +35,8 @@ class ProductFormatterTest extends TestCase
 
         $this->formatter = new ProductFormatter(
             $this->router,
+            new ChannelMappingResolver(),
             ['en_US'],
-            [],
         );
     }
 
@@ -213,7 +214,7 @@ class ProductFormatterTest extends TestCase
 
     public function testFormatMultiLanguageConsolidated(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US', 'de_DE'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US', 'de_DE']);
 
         $translationEn = $this->createMock(ProductTranslationInterface::class);
         $translationEn->method('getLocale')->willReturn('en_US');
@@ -350,7 +351,7 @@ class ProductFormatterTest extends TestCase
 
     public function testCategoriesMultiLanguage(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US', 'de_DE'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US', 'de_DE']);
 
         $taxonTranslationEn = $this->createMock(TaxonTranslationInterface::class);
         $taxonTranslationEn->method('getName')->willReturn('Laptops');
@@ -411,7 +412,7 @@ class ProductFormatterTest extends TestCase
 
     public function testVariationAttributesTranslatedPerLanguage(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US', 'de_DE'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US', 'de_DE']);
 
         $translationEn = $this->createMock(ProductTranslationInterface::class);
         $translationEn->method('getLocale')->willReturn('en_US');
@@ -528,8 +529,8 @@ class ProductFormatterTest extends TestCase
     {
         $formatter = new ProductFormatter(
             $this->router,
+            new ChannelMappingResolver(['WEB' => '', 'B2B' => 'b2b']),
             ['en_US', 'de_DE'],
-            ['WEB' => '', 'B2B' => 'b2b'],
         );
 
         $translationEn = $this->createMock(ProductTranslationInterface::class);
@@ -634,8 +635,8 @@ class ProductFormatterTest extends TestCase
     {
         $formatter = new ProductFormatter(
             $this->router,
+            new ChannelMappingResolver(['WEB' => '', 'B2B' => 'b2b']),
             ['en_US'],
-            ['WEB' => '', 'B2B' => 'b2b'],
         );
 
         $translation = $this->createMock(ProductTranslationInterface::class);
@@ -694,12 +695,10 @@ class ProductFormatterTest extends TestCase
 
         $formatter = new ProductFormatter(
             $this->router,
+            new ChannelMappingResolver([], $channelRepo),
             ['en_US'],
-            [],
             '',
             'brand',
-            null,
-            $channelRepo,
         );
 
         $translation = $this->createMock(ProductTranslationInterface::class);
@@ -750,12 +749,10 @@ class ProductFormatterTest extends TestCase
 
         $formatter = new ProductFormatter(
             $this->router,
+            new ChannelMappingResolver([], $channelRepo),
             ['en_US'],
-            [],
             '',
             'brand',
-            null,
-            $channelRepo,
         );
 
         $translation = $this->createMock(ProductTranslationInterface::class);
@@ -961,7 +958,7 @@ class ProductFormatterTest extends TestCase
 
     public function testFormatSkipsLocalesWithMissingTranslation(): void
     {
-        $formatter = new ProductFormatter($this->router, ['en_US', 'de_DE'], []);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US', 'de_DE']);
 
         $translationEn = $this->createMock(ProductTranslationInterface::class);
         $translationEn->method('getLocale')->willReturn('en_US');
@@ -1101,12 +1098,10 @@ class ProductFormatterTest extends TestCase
 
         $formatter = new ProductFormatter(
             $this->router,
+            new ChannelMappingResolver([], $channelRepo),
             ['en_US'],
-            [],
             '',
             'brand',
-            null,
-            $channelRepo,
         );
 
         $translation = $this->createMock(ProductTranslationInterface::class);
