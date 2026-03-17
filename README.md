@@ -126,8 +126,8 @@ emporiqa:
     brand_attribute_code: 'brand'         # optional, product attribute for brand
     enabled_languages: ['en_US', 'de_DE']
     channel_mapping:
-        FASHION_WEB: ''       # store-wide (default channel)
-        FASHION_B2B: 'b2b'    # B2B channel
+        FASHION_WEB: 'web'    # maps to "web" channel in Emporiqa
+        FASHION_B2B: 'b2b'    # maps to "b2b" channel in Emporiqa
     sync:
         products: true
         pages: true
@@ -156,7 +156,7 @@ The `channel_mapping` maps Sylius channel codes to Emporiqa channel keys. This c
 ```yaml
 emporiqa:
     channel_mapping:
-        FASHION_WEB: ''       # maps to store-wide (default)
+        FASHION_WEB: 'web'    # maps to "web" channel in Emporiqa
         FASHION_B2B: 'b2b'    # maps to "b2b" channel in Emporiqa
 ```
 
