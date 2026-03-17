@@ -87,7 +87,6 @@ services:
             $entityManager: '@doctrine.orm.default_entity_manager'
             $router: '@router'
             $logger: '@logger'
-            $security: '@?Symfony\Bundle\SecurityBundle\Security'
             $csrfTokenManager: '@?Symfony\Component\Security\Csrf\CsrfTokenManagerInterface'
             $eventDispatcher: '@?Symfony\Contracts\EventDispatcher\EventDispatcherInterface'
             $enabled: '%emporiqa.cart.enabled%'

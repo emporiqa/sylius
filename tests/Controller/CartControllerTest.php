@@ -17,12 +17,10 @@ use Sylius\Component\Order\Context\CartNotFoundException;
 use Sylius\Component\Order\Modifier\OrderItemQuantityModifierInterface;
 use Sylius\Component\Order\Modifier\OrderModifierInterface;
 use Sylius\Component\Resource\Factory\FactoryInterface;
-use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\RequestContext;
 use Symfony\Component\Routing\RouterInterface;
-use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Security\Csrf\CsrfToken;
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 
@@ -386,7 +384,6 @@ class CartControllerTest extends TestCase
             $this->entityManager,
             $this->router,
             null,
-            null,
             $csrfManager,
         );
 
@@ -399,12 +396,8 @@ class CartControllerTest extends TestCase
         $this->assertSame('test-token', $data['token']);
     }
 
-    public function testCsrfValidationRejectsInvalidTokenForAuthenticatedUser(): void
+    public function testCsrfValidationRejectsInvalidToken(): void
     {
-        $user = $this->createMock(UserInterface::class);
-        $security = $this->createMock(Security::class);
-        $security->method('getUser')->willReturn($user);
-
         $csrfManager = $this->createMock(CsrfTokenManagerInterface::class);
         $csrfManager->method('isTokenValid')->willReturn(false);
 
@@ -417,7 +410,6 @@ class CartControllerTest extends TestCase
             $this->entityManager,
             $this->router,
             null,
-            $security,
             $csrfManager,
         );
 
@@ -431,13 +423,10 @@ class CartControllerTest extends TestCase
         $this->assertSame('Invalid CSRF token', $data['error']);
     }
 
-    public function testCsrfValidationSkippedForAnonymousUser(): void
+    public function testCsrfValidationEnforcedForAnonymousUser(): void
     {
-        $security = $this->createMock(Security::class);
-        $security->method('getUser')->willReturn(null);
-
         $csrfManager = $this->createMock(CsrfTokenManagerInterface::class);
-        $csrfManager->expects($this->never())->method('isTokenValid');
+        $csrfManager->method('isTokenValid')->willReturn(false);
 
         $controller = new CartController(
             $this->cartContext,
@@ -448,16 +437,15 @@ class CartControllerTest extends TestCase
             $this->entityManager,
             $this->router,
             null,
-            $security,
             $csrfManager,
         );
-
-        $this->cartContext->method('getCart')->willThrowException(new CartNotFoundException());
 
         $request = Request::create('/emporiqa/api/cart/clear', 'POST');
         $response = $controller->clear($request);
 
-        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        $data = json_decode($response->getContent(), true);
+        $this->assertSame('Invalid CSRF token', $data['error']);
     }
 
     public function testAddReturnsNotFoundForUnknownStringVariationId(): void
@@ -623,7 +611,6 @@ class CartControllerTest extends TestCase
             $this->variantRepository,
             $this->entityManager,
             $this->router,
-            null,
             null,
             null,
             $dispatcher,

@@ -24,7 +24,7 @@ class PageFormatter implements PageFormatterInterface
     {
         try {
             $translations = $page->getTranslations();
-        } catch (\Throwable) {
+        } catch (\Exception) {
             $this->logger?->warning('Failed to load translations for page', ['page_id' => $page->getId()]);
             return [];
         }

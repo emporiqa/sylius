@@ -17,7 +17,6 @@ use Sylius\Component\Order\Context\CartNotFoundException;
 use Sylius\Component\Order\Modifier\OrderItemQuantityModifierInterface;
 use Sylius\Component\Order\Modifier\OrderModifierInterface;
 use Sylius\Component\Resource\Factory\FactoryInterface;
-use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -38,7 +37,6 @@ class CartController
         private EntityManagerInterface $entityManager,
         private RouterInterface $router,
         private ?LoggerInterface $logger = null,
-        private ?Security $security = null,
         private ?CsrfTokenManagerInterface $csrfTokenManager = null,
         private ?EventDispatcherInterface $eventDispatcher = null,
         private bool $enabled = true,
@@ -357,13 +355,9 @@ class CartController
         ]);
     }
 
-    /**
-     * Validates CSRF token for authenticated users.
-     * Anonymous users skip CSRF (matches Drupal's approach).
-     */
     private function validateCsrf(Request $request): ?JsonResponse
     {
-        if (!$this->security?->getUser() || !$this->csrfTokenManager) {
+        if (!$this->csrfTokenManager) {
             return null;
         }
 
@@ -478,10 +472,13 @@ class CartController
                 $params,
                 UrlGeneratorInterface::ABSOLUTE_URL,
             );
-        } catch (\Exception) {
-            $prefix = $locale ? '/' . $locale : '';
+        } catch (\Exception $e) {
+            $this->logger?->warning('Failed to generate checkout URL', [
+                'cart_id' => $cart->getId(),
+                'error' => $e->getMessage(),
+            ]);
 
-            return $prefix . '/checkout/' . $cart->getId();
+            return null;
         }
     }
 

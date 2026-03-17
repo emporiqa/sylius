@@ -125,7 +125,7 @@ class ProductFormatter implements ProductFormatterInterface
                 $lang = $locale;
 
                 $names[$empChannelKey][$lang] = $translation->getName();
-                $descriptions[$empChannelKey][$lang] = $translation->getDescription() ?? '';
+                $descriptions[$empChannelKey][$lang] = strip_tags($translation->getDescription() ?? '');
                 $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
                 $categories[$empChannelKey][$lang] = $this->getCategoryNamesForLocale($product, $locale);
                 $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale) ?: new \stdClass();
@@ -195,7 +195,7 @@ class ProductFormatter implements ProductFormatterInterface
                 $lang = $locale;
 
                 $names[$empChannelKey][$lang] = $translation->getName();
-                $descriptions[$empChannelKey][$lang] = $translation->getDescription() ?? '';
+                $descriptions[$empChannelKey][$lang] = strip_tags($translation->getDescription() ?? '');
                 $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
                 $categories[$empChannelKey][$lang] = $this->getCategoryNamesForLocale($product, $locale);
                 $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale) ?: new \stdClass();
@@ -266,7 +266,7 @@ class ProductFormatter implements ProductFormatterInterface
                 }
 
                 $names[$empChannelKey][$lang] = $variantName;
-                $descriptions[$empChannelKey][$lang] = $translation?->getDescription() ?? '';
+                $descriptions[$empChannelKey][$lang] = strip_tags($translation?->getDescription() ?? '');
                 $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
                 $categories[$empChannelKey][$lang] = $this->getCategoryNamesForLocale($product, $locale);
                 $mergedAttrs = array_merge(
@@ -451,7 +451,7 @@ class ProductFormatter implements ProductFormatterInterface
             }
             try {
                 $name = $current->getTranslation($locale)?->getName();
-            } catch (\Throwable) {
+            } catch (\Exception) {
                 $name = null;
             }
             if ($name) {
@@ -507,13 +507,13 @@ class ProductFormatter implements ProductFormatterInterface
             try {
                 $optionName = $optionValue->getOption()?->getTranslation($locale)?->getName()
                     ?? $optionValue->getOption()?->getCode();
-            } catch (\Throwable) {
+            } catch (\Exception) {
                 $optionName = $optionValue->getOption()?->getCode();
             }
             try {
                 $attrs[$optionName] = $optionValue->getTranslation($locale)?->getValue()
                     ?? $optionValue->getCode();
-            } catch (\Throwable) {
+            } catch (\Exception) {
                 $attrs[$optionName] = $optionValue->getCode();
             }
         }
@@ -528,7 +528,7 @@ class ProductFormatter implements ProductFormatterInterface
             try {
                 $attributes[] = $option->getTranslation($locale)?->getName()
                     ?? $option->getCode();
-            } catch (\Throwable) {
+            } catch (\Exception) {
                 $attributes[] = $option->getCode();
             }
         }
@@ -544,7 +544,7 @@ class ProductFormatter implements ProductFormatterInterface
             if ($attribute) {
                 try {
                     $name = $attribute->getTranslation($locale)?->getName() ?? $attribute->getCode();
-                } catch (\Throwable) {
+                } catch (\Exception) {
                     $name = $attribute->getCode();
                 }
                 $attributes[$name] = $attributeValue->getValue();
