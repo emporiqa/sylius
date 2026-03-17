@@ -99,13 +99,13 @@ class ProductFormatterTest extends TestCase
         $this->assertSame('product.updated', $events[0]['type']);
         $this->assertSame('product-1', $events[0]['data']['identification_number']);
         $this->assertSame('TEST-001', $events[0]['data']['sku']);
-        $this->assertSame([''], $events[0]['data']['channels']);
-        $this->assertSame('Test Product', $events[0]['data']['names']['']['en_US']);
-        $this->assertSame('A test product', $events[0]['data']['descriptions']['']['en_US']);
-        $this->assertSame('available', $events[0]['data']['availability_statuses']['']);
+        $this->assertSame(['DEFAULT'], $events[0]['data']['channels']);
+        $this->assertSame('Test Product', $events[0]['data']['names']['DEFAULT']['en_US']);
+        $this->assertSame('A test product', $events[0]['data']['descriptions']['DEFAULT']['en_US']);
+        $this->assertSame('available', $events[0]['data']['availability_statuses']['DEFAULT']);
         $this->assertFalse($events[0]['data']['is_parent']);
 
-        $prices = $events[0]['data']['prices'][''];
+        $prices = $events[0]['data']['prices']['DEFAULT'];
         $this->assertCount(1, $prices);
         $this->assertSame('EUR', $prices[0]['currency']);
         $this->assertSame(19.99, $prices[0]['current_price']);
@@ -169,8 +169,8 @@ class ProductFormatterTest extends TestCase
         $this->assertTrue($events[0]['data']['is_parent']);
         $this->assertSame('product-2', $events[0]['data']['identification_number']);
         $this->assertSame('TSHIRT', $events[0]['data']['sku']);
-        $this->assertSame(['Size'], $events[0]['data']['variation_attributes']['']['en_US']);
-        $this->assertSame([''], $events[0]['data']['channels']);
+        $this->assertSame(['Size'], $events[0]['data']['variation_attributes']['DEFAULT']['en_US']);
+        $this->assertSame(['DEFAULT'], $events[0]['data']['channels']);
 
         $this->assertSame('variation-10', $events[1]['data']['identification_number']);
         $this->assertSame('TSHIRT', $events[1]['data']['parent_sku']);
@@ -257,8 +257,8 @@ class ProductFormatterTest extends TestCase
 
         // Consolidated: one event with both languages
         $this->assertCount(1, $events);
-        $this->assertSame('Product', $events[0]['data']['names']['']['en_US']);
-        $this->assertSame('Produkt', $events[0]['data']['names']['']['de_DE']);
+        $this->assertSame('Product', $events[0]['data']['names']['DEFAULT']['en_US']);
+        $this->assertSame('Produkt', $events[0]['data']['names']['DEFAULT']['de_DE']);
     }
 
     public function testFormatProductOutOfStock(): void
@@ -299,8 +299,8 @@ class ProductFormatterTest extends TestCase
         $events = $this->formatter->format($product);
 
         $this->assertCount(1, $events);
-        $this->assertSame('out_of_stock', $events[0]['data']['availability_statuses']['']);
-        $this->assertSame(0, $events[0]['data']['stock_quantities']['']);
+        $this->assertSame('out_of_stock', $events[0]['data']['availability_statuses']['DEFAULT']);
+        $this->assertSame(0, $events[0]['data']['stock_quantities']['DEFAULT']);
     }
 
     public function testCategoriesSingleLanguage(): void
@@ -346,7 +346,7 @@ class ProductFormatterTest extends TestCase
 
         $events = $this->formatter->format($product);
 
-        $this->assertSame(['Laptops'], $events[0]['data']['categories']['']['en_US']);
+        $this->assertSame(['Laptops'], $events[0]['data']['categories']['DEFAULT']['en_US']);
     }
 
     public function testCategoriesMultiLanguage(): void
@@ -406,8 +406,8 @@ class ProductFormatterTest extends TestCase
 
         $events = $formatter->format($product);
 
-        $this->assertSame(['Laptops'], $events[0]['data']['categories']['']['en_US']);
-        $this->assertSame(['Laptops DE'], $events[0]['data']['categories']['']['de_DE']);
+        $this->assertSame(['Laptops'], $events[0]['data']['categories']['DEFAULT']['en_US']);
+        $this->assertSame(['Laptops DE'], $events[0]['data']['categories']['DEFAULT']['de_DE']);
     }
 
     public function testVariationAttributesTranslatedPerLanguage(): void
@@ -478,8 +478,8 @@ class ProductFormatterTest extends TestCase
         $events = $formatter->format($product);
 
         // Parent product has translated variation_attributes
-        $this->assertSame(['Color'], $events[0]['data']['variation_attributes']['']['en_US']);
-        $this->assertSame(['Farbe'], $events[0]['data']['variation_attributes']['']['de_DE']);
+        $this->assertSame(['Color'], $events[0]['data']['variation_attributes']['DEFAULT']['en_US']);
+        $this->assertSame(['Farbe'], $events[0]['data']['variation_attributes']['DEFAULT']['de_DE']);
 
         // Variant products have empty variation_attributes
         $varAttrs1 = $events[1]['data']['variation_attributes'];
@@ -529,7 +529,7 @@ class ProductFormatterTest extends TestCase
     {
         $formatter = new ProductFormatter(
             $this->router,
-            new ChannelMappingResolver(['WEB' => '', 'B2B' => 'b2b']),
+            new ChannelMappingResolver(),
             ['en_US', 'de_DE'],
         );
 
@@ -611,23 +611,23 @@ class ProductFormatterTest extends TestCase
 
         $parent = $events[0]['data'];
 
-        // WEB channel ("") has both en and de
-        $this->assertSame(['Outerwear'], $parent['categories']['']['en_US']);
-        $this->assertSame(['Oberbekleidung'], $parent['categories']['']['de_DE']);
-        $this->assertSame(['Size'], $parent['variation_attributes']['']['en_US']);
-        $this->assertSame(['Größe'], $parent['variation_attributes']['']['de_DE']);
+        // WEB channel has both en and de
+        $this->assertSame(['Outerwear'], $parent['categories']['WEB']['en_US']);
+        $this->assertSame(['Oberbekleidung'], $parent['categories']['WEB']['de_DE']);
+        $this->assertSame(['Size'], $parent['variation_attributes']['WEB']['en_US']);
+        $this->assertSame(['Größe'], $parent['variation_attributes']['WEB']['de_DE']);
 
-        // B2B channel ("b2b") has only en (channel has only en_US locale)
-        $this->assertSame(['Outerwear'], $parent['categories']['b2b']['en_US']);
-        $this->assertArrayNotHasKey('de_DE', $parent['categories']['b2b']);
-        $this->assertSame(['Size'], $parent['variation_attributes']['b2b']['en_US']);
-        $this->assertArrayNotHasKey('de_DE', $parent['variation_attributes']['b2b']);
+        // B2B channel has only en (channel has only en_US locale)
+        $this->assertSame(['Outerwear'], $parent['categories']['B2B']['en_US']);
+        $this->assertArrayNotHasKey('de_DE', $parent['categories']['B2B']);
+        $this->assertSame(['Size'], $parent['variation_attributes']['B2B']['en_US']);
+        $this->assertArrayNotHasKey('de_DE', $parent['variation_attributes']['B2B']);
 
         // Variant categories also translatable per channel
         $variantData = $events[1]['data'];
-        $this->assertSame(['Outerwear'], $variantData['categories']['']['en_US']);
-        $this->assertSame(['Oberbekleidung'], $variantData['categories']['']['de_DE']);
-        $this->assertSame(['Outerwear'], $variantData['categories']['b2b']['en_US']);
+        $this->assertSame(['Outerwear'], $variantData['categories']['WEB']['en_US']);
+        $this->assertSame(['Oberbekleidung'], $variantData['categories']['WEB']['de_DE']);
+        $this->assertSame(['Outerwear'], $variantData['categories']['B2B']['en_US']);
         $this->assertInstanceOf(\stdClass::class, $variantData['variation_attributes']);
     }
 
@@ -635,7 +635,7 @@ class ProductFormatterTest extends TestCase
     {
         $formatter = new ProductFormatter(
             $this->router,
-            new ChannelMappingResolver(['WEB' => '', 'B2B' => 'b2b']),
+            new ChannelMappingResolver(),
             ['en_US'],
         );
 
@@ -674,11 +674,11 @@ class ProductFormatterTest extends TestCase
         $events = $formatter->format($product);
 
         $this->assertCount(1, $events);
-        $this->assertSame(['', 'b2b'], $events[0]['data']['channels']);
-        $this->assertArrayHasKey('', $events[0]['data']['names']);
-        $this->assertArrayHasKey('b2b', $events[0]['data']['names']);
-        $this->assertSame('EUR', $events[0]['data']['prices'][''][0]['currency']);
-        $this->assertSame('USD', $events[0]['data']['prices']['b2b'][0]['currency']);
+        $this->assertSame(['WEB', 'B2B'], $events[0]['data']['channels']);
+        $this->assertArrayHasKey('WEB', $events[0]['data']['names']);
+        $this->assertArrayHasKey('B2B', $events[0]['data']['names']);
+        $this->assertSame('EUR', $events[0]['data']['prices']['WEB'][0]['currency']);
+        $this->assertSame('USD', $events[0]['data']['prices']['B2B'][0]['currency']);
     }
 
     public function testFormatAutoDetectsMultipleChannels(): void
@@ -695,7 +695,7 @@ class ProductFormatterTest extends TestCase
 
         $formatter = new ProductFormatter(
             $this->router,
-            new ChannelMappingResolver([], $channelRepo),
+            new ChannelMappingResolver($channelRepo),
             ['en_US'],
             '',
             'brand',
@@ -735,8 +735,7 @@ class ProductFormatterTest extends TestCase
 
         $events = $formatter->format($product);
 
-        // default → "", B2B → "b2b"
-        $this->assertSame(['', 'b2b'], $events[0]['data']['channels']);
+        $this->assertSame(['default', 'B2B'], $events[0]['data']['channels']);
     }
 
     public function testFormatSingleAutoDetectedChannelUsesDefault(): void
@@ -749,7 +748,7 @@ class ProductFormatterTest extends TestCase
 
         $formatter = new ProductFormatter(
             $this->router,
-            new ChannelMappingResolver([], $channelRepo),
+            new ChannelMappingResolver($channelRepo),
             ['en_US'],
             '',
             'brand',
@@ -788,8 +787,8 @@ class ProductFormatterTest extends TestCase
 
         $events = $formatter->format($product);
 
-        // Single channel → all maps to ""
-        $this->assertSame([''], $events[0]['data']['channels']);
+        // Single channel → uses channel code directly
+        $this->assertSame(['default'], $events[0]['data']['channels']);
     }
 
     public function testFormatProductNoChannelsReturnsEmpty(): void
@@ -838,7 +837,7 @@ class ProductFormatterTest extends TestCase
 
         $events = $this->formatter->format($product);
 
-        $this->assertSame('out_of_stock', $events[0]['data']['availability_statuses']['']);
+        $this->assertSame('out_of_stock', $events[0]['data']['availability_statuses']['DEFAULT']);
     }
 
     public function testFormatDisabledVariantIsOutOfStock(): void
@@ -876,7 +875,7 @@ class ProductFormatterTest extends TestCase
 
         $events = $this->formatter->format($product);
 
-        $this->assertSame('out_of_stock', $events[0]['data']['availability_statuses']['']);
+        $this->assertSame('out_of_stock', $events[0]['data']['availability_statuses']['DEFAULT']);
     }
 
     public function testFormatDescriptionNullDefaultsToEmptyString(): void
@@ -914,7 +913,7 @@ class ProductFormatterTest extends TestCase
 
         $events = $this->formatter->format($product);
 
-        $this->assertSame('', $events[0]['data']['descriptions']['']['en_US']);
+        $this->assertSame('', $events[0]['data']['descriptions']['DEFAULT']['en_US']);
     }
 
     public function testFormatWithJPYCurrencyNoDivision(): void
@@ -952,8 +951,8 @@ class ProductFormatterTest extends TestCase
 
         $events = $this->formatter->format($product);
 
-        $this->assertSame(1999.0, $events[0]['data']['prices'][''][0]['current_price']);
-        $this->assertSame('JPY', $events[0]['data']['prices'][''][0]['currency']);
+        $this->assertSame(1999.0, $events[0]['data']['prices']['JAPAN'][0]['current_price']);
+        $this->assertSame('JPY', $events[0]['data']['prices']['JAPAN'][0]['currency']);
     }
 
     public function testFormatSkipsLocalesWithMissingTranslation(): void
@@ -994,8 +993,8 @@ class ProductFormatterTest extends TestCase
 
         $events = $formatter->format($product);
 
-        $this->assertArrayHasKey('en_US', $events[0]['data']['names']['']);
-        $this->assertArrayNotHasKey('de_DE', $events[0]['data']['names']['']);
+        $this->assertArrayHasKey('en_US', $events[0]['data']['names']['DEFAULT']);
+        $this->assertArrayNotHasKey('de_DE', $events[0]['data']['names']['DEFAULT']);
     }
 
     public function testFormatFreeProductPriceZero(): void
@@ -1034,7 +1033,7 @@ class ProductFormatterTest extends TestCase
         $events = $this->formatter->format($product);
 
         $this->assertCount(1, $events);
-        $prices = $events[0]['data']['prices'][''];
+        $prices = $events[0]['data']['prices']['DEFAULT'];
         $this->assertCount(1, $prices);
         $this->assertEquals(0.0, $prices[0]['current_price']);
         $this->assertEquals(0.0, $prices[0]['regular_price']);
@@ -1076,7 +1075,7 @@ class ProductFormatterTest extends TestCase
 
         $events = $this->formatter->format($product);
 
-        $prices = $events[0]['data']['prices'][''];
+        $prices = $events[0]['data']['prices']['DEFAULT'];
         $this->assertCount(1, $prices);
         $this->assertEquals(0.0, $prices[0]['current_price']);
         $this->assertSame(19.99, $prices[0]['regular_price']);
@@ -1098,7 +1097,7 @@ class ProductFormatterTest extends TestCase
 
         $formatter = new ProductFormatter(
             $this->router,
-            new ChannelMappingResolver([], $channelRepo),
+            new ChannelMappingResolver($channelRepo),
             ['en_US'],
             '',
             'brand',
@@ -1138,8 +1137,8 @@ class ProductFormatterTest extends TestCase
 
         $events = $formatter->format($product);
 
-        // Null-code channel is skipped, so we get "" (default) and "b2b"
-        $this->assertSame(['', 'b2b'], $events[0]['data']['channels']);
+        // Null-code channel is skipped, so we get "default" and "B2B"
+        $this->assertSame(['default', 'B2B'], $events[0]['data']['channels']);
     }
 
     public function testFormatProductWithNullCode(): void
@@ -1212,6 +1211,6 @@ class ProductFormatterTest extends TestCase
 
         $events = $this->formatter->format($product);
 
-        $this->assertEmpty($events[0]['data']['prices']['']);
+        $this->assertEmpty($events[0]['data']['prices']['DEFAULT']);
     }
 }

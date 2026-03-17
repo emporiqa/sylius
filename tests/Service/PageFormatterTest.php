@@ -50,9 +50,15 @@ class PageFormatterTest extends TestCase
 
     public function testFormatSingleChannelDefaultKey(): void
     {
+        $ch = $this->createMock(ChannelInterface::class);
+        $ch->method('getCode')->willReturn('default');
+
+        $channelRepo = $this->createMock(ChannelRepositoryInterface::class);
+        $channelRepo->method('findAll')->willReturn([$ch]);
+
         $formatter = new PageFormatter(
             $this->urlResolver,
-            new ChannelMappingResolver(),
+            new ChannelMappingResolver($channelRepo),
             ['en_US'],
         );
 
@@ -62,16 +68,24 @@ class PageFormatterTest extends TestCase
         $this->assertCount(1, $events);
         $this->assertSame('page.updated', $events[0]['type']);
         $this->assertSame('page-1', $events[0]['data']['identification_number']);
-        $this->assertSame([''], $events[0]['data']['channels']);
-        $this->assertSame('Shipping', $events[0]['data']['titles']['']['en_US']);
-        $this->assertSame('Free shipping', $events[0]['data']['contents']['']['en_US']);
+        $this->assertSame(['default'], $events[0]['data']['channels']);
+        $this->assertSame('Shipping', $events[0]['data']['titles']['default']['en_US']);
+        $this->assertSame('Free shipping', $events[0]['data']['contents']['default']['en_US']);
     }
 
     public function testFormatWithExplicitChannelMapping(): void
     {
+        $ch1 = $this->createMock(ChannelInterface::class);
+        $ch1->method('getCode')->willReturn('WEB');
+        $ch2 = $this->createMock(ChannelInterface::class);
+        $ch2->method('getCode')->willReturn('B2B');
+
+        $channelRepo = $this->createMock(ChannelRepositoryInterface::class);
+        $channelRepo->method('findAll')->willReturn([$ch1, $ch2]);
+
         $formatter = new PageFormatter(
             $this->urlResolver,
-            new ChannelMappingResolver(['WEB' => '', 'B2B' => 'b2b']),
+            new ChannelMappingResolver($channelRepo),
             ['en_US'],
         );
 
@@ -80,10 +94,10 @@ class PageFormatterTest extends TestCase
 
         $this->assertCount(1, $events);
         $channels = $events[0]['data']['channels'];
-        $this->assertContains('', $channels);
-        $this->assertContains('b2b', $channels);
-        $this->assertSame('FAQ', $events[0]['data']['titles']['']['en_US']);
-        $this->assertSame('FAQ', $events[0]['data']['titles']['b2b']['en_US']);
+        $this->assertContains('WEB', $channels);
+        $this->assertContains('B2B', $channels);
+        $this->assertSame('FAQ', $events[0]['data']['titles']['WEB']['en_US']);
+        $this->assertSame('FAQ', $events[0]['data']['titles']['B2B']['en_US']);
     }
 
     public function testFormatWithAutoDetectedChannels(): void
@@ -98,7 +112,7 @@ class PageFormatterTest extends TestCase
 
         $formatter = new PageFormatter(
             $this->urlResolver,
-            new ChannelMappingResolver([], $channelRepo),
+            new ChannelMappingResolver($channelRepo),
             ['en_US'],
         );
 
@@ -106,9 +120,9 @@ class PageFormatterTest extends TestCase
         $events = $formatter->format($page);
 
         $this->assertCount(1, $events);
-        $this->assertSame(['', 'b2b'], $events[0]['data']['channels']);
-        $this->assertSame('Terms', $events[0]['data']['titles']['']['en_US']);
-        $this->assertSame('Terms', $events[0]['data']['titles']['b2b']['en_US']);
+        $this->assertSame(['default', 'B2B'], $events[0]['data']['channels']);
+        $this->assertSame('Terms', $events[0]['data']['titles']['default']['en_US']);
+        $this->assertSame('Terms', $events[0]['data']['titles']['B2B']['en_US']);
     }
 
     public function testFormatSingleAutoDetectedChannelUsesDefault(): void
@@ -121,21 +135,27 @@ class PageFormatterTest extends TestCase
 
         $formatter = new PageFormatter(
             $this->urlResolver,
-            new ChannelMappingResolver([], $channelRepo),
+            new ChannelMappingResolver($channelRepo),
             ['en_US'],
         );
 
         $page = $this->createPage(['en_US' => ['title' => 'About', 'content' => 'About us']]);
         $events = $formatter->format($page);
 
-        $this->assertSame([''], $events[0]['data']['channels']);
+        $this->assertSame(['default'], $events[0]['data']['channels']);
     }
 
     public function testFormatMultiLanguage(): void
     {
+        $ch = $this->createMock(ChannelInterface::class);
+        $ch->method('getCode')->willReturn('default');
+
+        $channelRepo = $this->createMock(ChannelRepositoryInterface::class);
+        $channelRepo->method('findAll')->willReturn([$ch]);
+
         $formatter = new PageFormatter(
             $this->urlResolver,
-            new ChannelMappingResolver(),
+            new ChannelMappingResolver($channelRepo),
             ['en_US', 'de_DE'],
         );
 
@@ -145,8 +165,8 @@ class PageFormatterTest extends TestCase
         ]);
         $events = $formatter->format($page);
 
-        $this->assertSame('Shipping', $events[0]['data']['titles']['']['en_US']);
-        $this->assertSame('Versand', $events[0]['data']['titles']['']['de_DE']);
+        $this->assertSame('Shipping', $events[0]['data']['titles']['default']['en_US']);
+        $this->assertSame('Versand', $events[0]['data']['titles']['default']['de_DE']);
     }
 
     public function testFormatPageWithNoTranslationsReturnsEmpty(): void
@@ -178,27 +198,39 @@ class PageFormatterTest extends TestCase
 
     public function testFormatStripsHtmlFromContent(): void
     {
-        $formatter = new PageFormatter($this->urlResolver, new ChannelMappingResolver(), ['en_US']);
+        $ch = $this->createMock(ChannelInterface::class);
+        $ch->method('getCode')->willReturn('default');
+
+        $channelRepo = $this->createMock(ChannelRepositoryInterface::class);
+        $channelRepo->method('findAll')->willReturn([$ch]);
+
+        $formatter = new PageFormatter($this->urlResolver, new ChannelMappingResolver($channelRepo), ['en_US']);
 
         $page = $this->createPage([
             'en_US' => ['title' => 'Policy', 'content' => '<p>No <strong>returns</strong></p>'],
         ]);
         $events = $formatter->format($page);
 
-        $this->assertSame('No returns', $events[0]['data']['contents']['']['en_US']);
+        $this->assertSame('No returns', $events[0]['data']['contents']['default']['en_US']);
     }
 
     public function testFormatSkipsLocalesWithMissingTitle(): void
     {
-        $formatter = new PageFormatter($this->urlResolver, new ChannelMappingResolver(), ['en_US', 'de_DE']);
+        $ch = $this->createMock(ChannelInterface::class);
+        $ch->method('getCode')->willReturn('default');
+
+        $channelRepo = $this->createMock(ChannelRepositoryInterface::class);
+        $channelRepo->method('findAll')->willReturn([$ch]);
+
+        $formatter = new PageFormatter($this->urlResolver, new ChannelMappingResolver($channelRepo), ['en_US', 'de_DE']);
 
         $page = $this->createPage([
             'en_US' => ['title' => 'Help', 'content' => 'Help content'],
         ]);
         $events = $formatter->format($page);
 
-        $this->assertArrayHasKey('en_US', $events[0]['data']['titles']['']);
-        $this->assertArrayNotHasKey('de_DE', $events[0]['data']['titles']['']);
+        $this->assertArrayHasKey('en_US', $events[0]['data']['titles']['default']);
+        $this->assertArrayNotHasKey('de_DE', $events[0]['data']['titles']['default']);
     }
 
     public function testFormatChannelsAwarePageUsesPageChannels(): void
@@ -208,7 +240,7 @@ class PageFormatterTest extends TestCase
 
         $formatter = new PageFormatter(
             $this->urlResolver,
-            new ChannelMappingResolver(['WEB' => '', 'B2B' => 'b2b']),
+            new ChannelMappingResolver(),
             ['en_US'],
         );
 
@@ -219,16 +251,16 @@ class PageFormatterTest extends TestCase
         $events = $formatter->format($page);
 
         $this->assertCount(1, $events);
-        $this->assertSame([''], $events[0]['data']['channels']);
-        $this->assertSame('FAQ', $events[0]['data']['titles']['']['en_US']);
-        $this->assertArrayNotHasKey('b2b', $events[0]['data']['titles']);
+        $this->assertSame(['WEB'], $events[0]['data']['channels']);
+        $this->assertSame('FAQ', $events[0]['data']['titles']['WEB']['en_US']);
+        $this->assertArrayNotHasKey('B2B', $events[0]['data']['titles']);
     }
 
     public function testFormatChannelsAwarePageWithNoChannelsReturnsEmpty(): void
     {
         $formatter = new PageFormatter(
             $this->urlResolver,
-            new ChannelMappingResolver(['WEB' => '', 'B2B' => 'b2b']),
+            new ChannelMappingResolver(),
             ['en_US'],
         );
 
@@ -250,7 +282,7 @@ class PageFormatterTest extends TestCase
 
         $formatter = new PageFormatter(
             $this->urlResolver,
-            new ChannelMappingResolver(['WEB' => '', 'B2B' => 'b2b']),
+            new ChannelMappingResolver(),
             ['en_US'],
         );
 
@@ -261,9 +293,9 @@ class PageFormatterTest extends TestCase
         $events = $formatter->format($page);
 
         $this->assertCount(1, $events);
-        $this->assertSame(['', 'b2b'], $events[0]['data']['channels']);
-        $this->assertSame('Terms', $events[0]['data']['titles']['']['en_US']);
-        $this->assertSame('Terms', $events[0]['data']['titles']['b2b']['en_US']);
+        $this->assertSame(['WEB', 'B2B'], $events[0]['data']['channels']);
+        $this->assertSame('Terms', $events[0]['data']['titles']['WEB']['en_US']);
+        $this->assertSame('Terms', $events[0]['data']['titles']['B2B']['en_US']);
     }
 
     public function testFormatChannelsAwarePageWithAutoDetection(): void
@@ -278,7 +310,7 @@ class PageFormatterTest extends TestCase
 
         $formatter = new PageFormatter(
             $this->urlResolver,
-            new ChannelMappingResolver([], $channelRepo),
+            new ChannelMappingResolver($channelRepo),
             ['en_US'],
         );
 
@@ -290,8 +322,8 @@ class PageFormatterTest extends TestCase
         $events = $formatter->format($page);
 
         $this->assertCount(1, $events);
-        $this->assertSame(['b2b'], $events[0]['data']['channels']);
-        $this->assertArrayNotHasKey('', $events[0]['data']['titles']);
+        $this->assertSame(['B2B'], $events[0]['data']['channels']);
+        $this->assertArrayNotHasKey('default', $events[0]['data']['titles']);
     }
 
     private function createChannelsAwarePage(array $translations, array $channels): PageInterface

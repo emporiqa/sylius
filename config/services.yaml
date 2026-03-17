@@ -16,7 +16,6 @@ services:
 
     Emporiqa\SyliusPlugin\Service\ChannelMappingResolver:
         arguments:
-            $channelMapping: '%emporiqa.channel_mapping%'
             $channelRepository: '@?sylius.repository.channel'
 
     Emporiqa\SyliusPlugin\Service\ProductFormatter:

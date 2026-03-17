@@ -200,7 +200,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testFullSchemaCompliance(): void
     {
-        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(['WEB' => '']), ['en_US', 'de_DE']);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US', 'de_DE']);
 
         $channel = $this->createChannel('WEB', 'EUR', ['en_US', 'de_DE']);
 
@@ -270,40 +270,40 @@ class MarketplaceCompatibilityTest extends TestCase
         // Top-level required fields
         $this->assertSame('product-123', $d['identification_number']);
         $this->assertSame('LAPTOP', $d['sku']);
-        $this->assertSame([''], $d['channels']);
+        $this->assertSame(['WEB'], $d['channels']);
         $this->assertNull($d['parent_sku']);
         $this->assertTrue($d['is_parent']);
 
         // Translatable fields: {channel: {lang: value}}
-        $this->assertSame('Trail Laptop', $d['names']['']['en_US']);
-        $this->assertSame('Wander-Laptop', $d['names']['']['de_DE']);
-        $this->assertSame('Lightweight laptop', $d['descriptions']['']['en_US']);
-        $this->assertSame('Leichter Laptop', $d['descriptions']['']['de_DE']);
-        $this->assertIsString($d['links']['']['en_US']);
-        $this->assertIsString($d['links']['']['de_DE']);
+        $this->assertSame('Trail Laptop', $d['names']['WEB']['en_US']);
+        $this->assertSame('Wander-Laptop', $d['names']['WEB']['de_DE']);
+        $this->assertSame('Lightweight laptop', $d['descriptions']['WEB']['en_US']);
+        $this->assertSame('Leichter Laptop', $d['descriptions']['WEB']['de_DE']);
+        $this->assertIsString($d['links']['WEB']['en_US']);
+        $this->assertIsString($d['links']['WEB']['de_DE']);
 
         // Categories: {channel: {lang: [paths]}}
-        $this->assertIsArray($d['categories']['']['en_US']);
-        $this->assertIsArray($d['categories']['']['de_DE']);
-        $this->assertStringContainsString('>', $d['categories']['']['en_US'][0]);
-        $this->assertStringContainsString('>', $d['categories']['']['de_DE'][0]);
+        $this->assertIsArray($d['categories']['WEB']['en_US']);
+        $this->assertIsArray($d['categories']['WEB']['de_DE']);
+        $this->assertStringContainsString('>', $d['categories']['WEB']['en_US'][0]);
+        $this->assertStringContainsString('>', $d['categories']['WEB']['de_DE'][0]);
 
         // Attributes: {channel: {lang: {name: value}}}
-        $this->assertArrayHasKey('Material', $d['attributes']['']['en_US']);
-        $this->assertArrayHasKey('Material', $d['attributes']['']['de_DE']);
+        $this->assertArrayHasKey('Material', $d['attributes']['WEB']['en_US']);
+        $this->assertArrayHasKey('Material', $d['attributes']['WEB']['de_DE']);
 
         // variation_attributes: {channel: {lang: [names]}}
-        $this->assertSame(['Color', 'Size'], $d['variation_attributes']['']['en_US']);
-        $this->assertSame(['Farbe', 'Größe'], $d['variation_attributes']['']['de_DE']);
+        $this->assertSame(['Color', 'Size'], $d['variation_attributes']['WEB']['en_US']);
+        $this->assertSame(['Farbe', 'Größe'], $d['variation_attributes']['WEB']['de_DE']);
 
         // Shared per-channel fields (not nested by language)
-        $this->assertSame('TrailPeak', $d['brands']['']);
-        $this->assertIsArray($d['prices']['']);
-        $this->assertSame('EUR', $d['prices'][''][0]['currency']);
-        $this->assertSame(79.99, $d['prices'][''][0]['current_price']);
-        $this->assertSame(99.99, $d['prices'][''][0]['regular_price']);
-        $this->assertNull($d['stock_quantities']['']);
-        $this->assertSame(['https://shop.example.com/media/image/laptop.jpg'], $d['images']['']);
+        $this->assertSame('TrailPeak', $d['brands']['WEB']);
+        $this->assertIsArray($d['prices']['WEB']);
+        $this->assertSame('EUR', $d['prices']['WEB'][0]['currency']);
+        $this->assertSame(79.99, $d['prices']['WEB'][0]['current_price']);
+        $this->assertSame(99.99, $d['prices']['WEB'][0]['regular_price']);
+        $this->assertNull($d['stock_quantities']['WEB']);
+        $this->assertSame(['https://shop.example.com/media/image/laptop.jpg'], $d['images']['WEB']);
 
         // -- Validate variant event --
         $v1 = $events[1];
@@ -314,24 +314,24 @@ class MarketplaceCompatibilityTest extends TestCase
         $this->assertSame('LAPTOP-BLUE-M', $vd['sku']);
         $this->assertSame('LAPTOP', $vd['parent_sku']);
         $this->assertFalse($vd['is_parent']);
-        $this->assertSame(42, $vd['stock_quantities']['']);
-        $this->assertSame('available', $vd['availability_statuses']['']);
+        $this->assertSame(42, $vd['stock_quantities']['WEB']);
+        $this->assertSame('available', $vd['availability_statuses']['WEB']);
 
         // Variant variation_attributes must be empty object (not array)
         $this->assertInstanceOf(\stdClass::class, $vd['variation_attributes']);
 
         // Variant attributes include option values merged with product attributes
-        $this->assertArrayHasKey('Color', $vd['attributes']['']['en_US']);
-        $this->assertArrayHasKey('Farbe', $vd['attributes']['']['de_DE']);
+        $this->assertArrayHasKey('Color', $vd['attributes']['WEB']['en_US']);
+        $this->assertArrayHasKey('Farbe', $vd['attributes']['WEB']['de_DE']);
 
         // Variant name includes option suffix
-        $this->assertStringContainsString('Blue', $vd['names']['']['en_US']);
-        $this->assertStringContainsString('Blau', $vd['names']['']['de_DE']);
+        $this->assertStringContainsString('Blue', $vd['names']['WEB']['en_US']);
+        $this->assertStringContainsString('Blau', $vd['names']['WEB']['de_DE']);
 
         // Out-of-stock variant
         $v2 = $events[2];
-        $this->assertSame('out_of_stock', $v2['data']['availability_statuses']['']);
-        $this->assertSame(0, $v2['data']['stock_quantities']['']);
+        $this->assertSame('out_of_stock', $v2['data']['availability_statuses']['WEB']);
+        $this->assertSame(0, $v2['data']['stock_quantities']['WEB']);
     }
 
     /**
@@ -371,27 +371,27 @@ class MarketplaceCompatibilityTest extends TestCase
         $data = $decoded['events'][0]['data'];
 
         // channels must be an array
-        $this->assertSame([''], $data['channels']);
+        $this->assertSame(['DEFAULT'], $data['channels']);
 
         // names must be {channel: {lang: string}}
-        $this->assertIsString($data['names']['']['en_US']);
+        $this->assertIsString($data['names']['DEFAULT']['en_US']);
 
         // categories must be {channel: {lang: [strings]}}
-        $this->assertIsArray($data['categories']['']['en_US']);
+        $this->assertIsArray($data['categories']['DEFAULT']['en_US']);
 
         // prices must be {channel: [{currency, current_price, ...}]}
-        $this->assertIsArray($data['prices']['']);
-        $this->assertArrayHasKey('currency', $data['prices'][''][0]);
+        $this->assertIsArray($data['prices']['DEFAULT']);
+        $this->assertArrayHasKey('currency', $data['prices']['DEFAULT'][0]);
 
         // variation_attributes for simple product: empty object {}
         $jsonRaw = json_encode($events[0]['data']['variation_attributes']);
         $this->assertSame('{}', $jsonRaw);
 
         // brands: {channel: string}
-        $this->assertIsString($data['brands']['']);
+        $this->assertIsString($data['brands']['DEFAULT']);
 
         // images: {channel: [strings]}
-        $this->assertIsArray($data['images']['']);
+        $this->assertIsArray($data['images']['DEFAULT']);
     }
 
     /**
@@ -399,10 +399,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testMultiChannelDifferentCurrenciesAndLocales(): void
     {
-        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver([
-            'WEB_EU' => '',
-            'WEB_US' => 'us',
-        ]), ['en_US', 'de_DE', 'fr_FR']);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US', 'de_DE', 'fr_FR']);
 
         $euChannel = $this->createChannel('WEB_EU', 'EUR', ['en_US', 'de_DE']);
         $usChannel = $this->createChannel('WEB_US', 'USD', ['en_US']);
@@ -437,25 +434,25 @@ class MarketplaceCompatibilityTest extends TestCase
         $d = $events[0]['data'];
 
         // Both channel keys present
-        $this->assertSame(['', 'us'], $d['channels']);
+        $this->assertSame(['WEB_EU', 'WEB_US'], $d['channels']);
 
         // EU channel: en_US + de_DE
-        $this->assertSame('Product', $d['names']['']['en_US']);
-        $this->assertSame('Produkt', $d['names']['']['de_DE']);
-        $this->assertArrayHasKey('en_US', $d['categories']['']);
-        $this->assertArrayHasKey('de_DE', $d['categories']['']);
+        $this->assertSame('Product', $d['names']['WEB_EU']['en_US']);
+        $this->assertSame('Produkt', $d['names']['WEB_EU']['de_DE']);
+        $this->assertArrayHasKey('en_US', $d['categories']['WEB_EU']);
+        $this->assertArrayHasKey('de_DE', $d['categories']['WEB_EU']);
 
         // US channel: en_US only (channel has only en_US)
-        $this->assertSame('Product', $d['names']['us']['en_US']);
-        $this->assertArrayNotHasKey('de_DE', $d['names']['us']);
-        $this->assertArrayHasKey('en_US', $d['categories']['us']);
-        $this->assertArrayNotHasKey('de_DE', $d['categories']['us']);
+        $this->assertSame('Product', $d['names']['WEB_US']['en_US']);
+        $this->assertArrayNotHasKey('de_DE', $d['names']['WEB_US']);
+        $this->assertArrayHasKey('en_US', $d['categories']['WEB_US']);
+        $this->assertArrayNotHasKey('de_DE', $d['categories']['WEB_US']);
 
         // Different currencies per channel
-        $this->assertSame('EUR', $d['prices'][''][0]['currency']);
-        $this->assertSame(49.99, $d['prices'][''][0]['current_price']);
-        $this->assertSame('USD', $d['prices']['us'][0]['currency']);
-        $this->assertSame(54.99, $d['prices']['us'][0]['current_price']);
+        $this->assertSame('EUR', $d['prices']['WEB_EU'][0]['currency']);
+        $this->assertSame(49.99, $d['prices']['WEB_EU'][0]['current_price']);
+        $this->assertSame('USD', $d['prices']['WEB_US'][0]['currency']);
+        $this->assertSame(54.99, $d['prices']['WEB_US'][0]['current_price']);
     }
 
     /**
@@ -507,16 +504,16 @@ class MarketplaceCompatibilityTest extends TestCase
         $variant = $events[1]['data'];
 
         // Parent: variation_attributes keys must match the language-specific attribute keys on variants
-        $this->assertSame(['Color'], $parent['variation_attributes']['']['en_US']);
-        $this->assertSame(['Farbe'], $parent['variation_attributes']['']['de_DE']);
+        $this->assertSame(['Color'], $parent['variation_attributes']['DEFAULT']['en_US']);
+        $this->assertSame(['Farbe'], $parent['variation_attributes']['DEFAULT']['de_DE']);
 
         // Variant: attributes must contain the same keys
-        $this->assertArrayHasKey('Color', $variant['attributes']['']['en_US']);
-        $this->assertArrayHasKey('Farbe', $variant['attributes']['']['de_DE']);
+        $this->assertArrayHasKey('Color', $variant['attributes']['DEFAULT']['en_US']);
+        $this->assertArrayHasKey('Farbe', $variant['attributes']['DEFAULT']['de_DE']);
 
         // The values must match
-        $this->assertSame('Red', $variant['attributes']['']['en_US']['Color']);
-        $this->assertSame('Rot', $variant['attributes']['']['de_DE']['Farbe']);
+        $this->assertSame('Red', $variant['attributes']['DEFAULT']['en_US']['Color']);
+        $this->assertSame('Rot', $variant['attributes']['DEFAULT']['de_DE']['Farbe']);
     }
 
     /**
@@ -555,8 +552,8 @@ class MarketplaceCompatibilityTest extends TestCase
         $events = $formatter->format($product);
         $d = $events[0]['data'];
 
-        $this->assertSame(['Clothing > Jackets'], $d['categories']['']['en_US']);
-        $this->assertSame(['Bekleidung > Jacken'], $d['categories']['']['de_DE']);
+        $this->assertSame(['Clothing > Jackets'], $d['categories']['DEFAULT']['en_US']);
+        $this->assertSame(['Bekleidung > Jacken'], $d['categories']['DEFAULT']['de_DE']);
     }
 
     /**
@@ -588,7 +585,7 @@ class MarketplaceCompatibilityTest extends TestCase
         $product->method('getImages')->willReturn(new ArrayCollection());
 
         $events = $formatter->format($product);
-        $this->assertSame([], $events[0]['data']['categories']['']['en_US']);
+        $this->assertSame([], $events[0]['data']['categories']['DEFAULT']['en_US']);
     }
 
     /**
@@ -620,7 +617,7 @@ class MarketplaceCompatibilityTest extends TestCase
         $product->method('getImages')->willReturn(new ArrayCollection());
 
         $events = $formatter->format($product);
-        $this->assertSame([], $events[0]['data']['images']['']);
+        $this->assertSame([], $events[0]['data']['images']['DEFAULT']);
     }
 
     /**
@@ -651,7 +648,7 @@ class MarketplaceCompatibilityTest extends TestCase
         $product->method('getImages')->willReturn(new ArrayCollection());
 
         $events = $formatter->format($product);
-        $this->assertSame([], $events[0]['data']['prices']['']);
+        $this->assertSame([], $events[0]['data']['prices']['DEFAULT']);
     }
 
     /**
@@ -683,7 +680,7 @@ class MarketplaceCompatibilityTest extends TestCase
         $product->method('getImages')->willReturn(new ArrayCollection());
 
         $events = $formatter->format($product);
-        $this->assertSame('out_of_stock', $events[0]['data']['availability_statuses']['']);
+        $this->assertSame('out_of_stock', $events[0]['data']['availability_statuses']['DEFAULT']);
     }
 
     /**
@@ -729,14 +726,14 @@ class MarketplaceCompatibilityTest extends TestCase
 
         $events = $formatter->format($product);
         // parent + 2 variants
-        $this->assertSame('available', $events[1]['data']['availability_statuses']['']);
-        $this->assertSame('out_of_stock', $events[2]['data']['availability_statuses']['']);
+        $this->assertSame('available', $events[1]['data']['availability_statuses']['DEFAULT']);
+        $this->assertSame('out_of_stock', $events[2]['data']['availability_statuses']['DEFAULT']);
     }
 
     /**
-     * Unmapped channels default to "" key — verifies data isn't lost.
+     * Channels use the Sylius channel code directly as the key.
      */
-    public function testUnmappedChannelsDefaultToEmptyKey(): void
+    public function testChannelUsesCodeDirectly(): void
     {
         $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
         $channel = $this->createChannel('SOME_CHANNEL', 'GBP', ['en_US']);
@@ -764,16 +761,15 @@ class MarketplaceCompatibilityTest extends TestCase
         $events = $formatter->format($product);
         $d = $events[0]['data'];
 
-        $this->assertSame([''], $d['channels']);
-        $this->assertSame('GBP', $d['prices'][''][0]['currency']);
-        $this->assertSame('UK Product', $d['names']['']['en_US']);
+        $this->assertSame(['SOME_CHANNEL'], $d['channels']);
+        $this->assertSame('GBP', $d['prices']['SOME_CHANNEL'][0]['currency']);
+        $this->assertSame('UK Product', $d['names']['SOME_CHANNEL']['en_US']);
     }
 
     /**
-     * Multiple unmapped channels collapse to same key — last one wins for shared fields.
-     * This verifies the behavior is deterministic.
+     * Multiple channels each get their own key based on their Sylius channel code.
      */
-    public function testMultipleUnmappedChannelsCollapse(): void
+    public function testMultipleChannelsGetDistinctKeys(): void
     {
         $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
 
@@ -797,7 +793,7 @@ class MarketplaceCompatibilityTest extends TestCase
         $product->method('getCode')->willReturn('COL');
         $product->method('isEnabled')->willReturn(true);
         $product->method('getTranslations')->willReturn(new ArrayCollection([
-            $this->createTranslation('en_US', 'Collapsed Product'),
+            $this->createTranslation('en_US', 'Multi Channel Product'),
         ]));
         $product->method('getChannels')->willReturn(new ArrayCollection([$ch1, $ch2]));
         $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
@@ -808,14 +804,16 @@ class MarketplaceCompatibilityTest extends TestCase
         $events = $formatter->format($product);
         $d = $events[0]['data'];
 
-        // Only one channel key (both unmapped → "")
-        $this->assertSame([''], $d['channels']);
+        // Each channel gets its own key
+        $this->assertSame(['CH_A', 'CH_B'], $d['channels']);
 
-        // Last channel (CH_B/USD) overwrites shared fields
-        $this->assertSame('USD', $d['prices'][''][0]['currency']);
+        // Each channel has its own currency
+        $this->assertSame('EUR', $d['prices']['CH_A'][0]['currency']);
+        $this->assertSame('USD', $d['prices']['CH_B'][0]['currency']);
 
-        // Translatable fields also overwritten but with same value
-        $this->assertSame('Collapsed Product', $d['names']['']['en_US']);
+        // Translatable fields present for both channels
+        $this->assertSame('Multi Channel Product', $d['names']['CH_A']['en_US']);
+        $this->assertSame('Multi Channel Product', $d['names']['CH_B']['en_US']);
     }
 
     /**
@@ -894,14 +892,14 @@ class MarketplaceCompatibilityTest extends TestCase
         $events = $formatter->format($product);
         $d = $events[0]['data'];
 
-        $this->assertArrayHasKey('en_US', $d['names']['']);
-        $this->assertArrayHasKey('de_DE', $d['names']['']);
-        $this->assertArrayNotHasKey('fr_FR', $d['names']['']);
+        $this->assertArrayHasKey('en_US', $d['names']['DEFAULT']);
+        $this->assertArrayHasKey('de_DE', $d['names']['DEFAULT']);
+        $this->assertArrayNotHasKey('fr_FR', $d['names']['DEFAULT']);
 
         // Categories also skip missing locale
-        $this->assertArrayHasKey('en_US', $d['categories']['']);
-        $this->assertArrayHasKey('de_DE', $d['categories']['']);
-        $this->assertArrayNotHasKey('fr_FR', $d['categories']['']);
+        $this->assertArrayHasKey('en_US', $d['categories']['DEFAULT']);
+        $this->assertArrayHasKey('de_DE', $d['categories']['DEFAULT']);
+        $this->assertArrayNotHasKey('fr_FR', $d['categories']['DEFAULT']);
     }
 
     /**
@@ -910,7 +908,7 @@ class MarketplaceCompatibilityTest extends TestCase
      */
     public function testJsonRoundtripIntegrity(): void
     {
-        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(['WEB' => '']), ['en_US', 'de_DE']);
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US', 'de_DE']);
         $channel = $this->createChannel('WEB', 'EUR', ['en_US', 'de_DE']);
 
         $option = $this->createOption('color', 'Color', 'Farbe');
@@ -962,14 +960,14 @@ class MarketplaceCompatibilityTest extends TestCase
         $parent = $decoded['events'][0]['data'];
         $this->assertTrue($parent['is_parent']);
         $this->assertNull($parent['parent_sku']);
-        $this->assertNull($parent['stock_quantities']['']);
-        $this->assertIsArray($parent['variation_attributes']['']['en_US']);
-        $this->assertIsArray($parent['variation_attributes']['']['de_DE']);
+        $this->assertNull($parent['stock_quantities']['WEB']);
+        $this->assertIsArray($parent['variation_attributes']['WEB']['en_US']);
+        $this->assertIsArray($parent['variation_attributes']['WEB']['de_DE']);
 
         $v1 = $decoded['events'][1]['data'];
         $this->assertFalse($v1['is_parent']);
         $this->assertSame('ROUNDTRIP', $v1['parent_sku']);
-        $this->assertSame(4, $v1['stock_quantities']['']);
+        $this->assertSame(4, $v1['stock_quantities']['WEB']);
 
         // variation_attributes on variants serializes to {} (empty object)
         $rawJson = json_encode($events[1]['data']['variation_attributes']);
@@ -979,7 +977,7 @@ class MarketplaceCompatibilityTest extends TestCase
     }
 
     // ============================================================
-    // Channel auto-detection tests
+    // Channel resolution tests
     // ============================================================
 
     private function createSimpleProduct(ChannelInterface $channel, ChannelPricingInterface $pricing): ProductInterface
@@ -1031,29 +1029,27 @@ class MarketplaceCompatibilityTest extends TestCase
     }
 
     /**
-     * Single channel in store: auto-maps to "" (same as no mapping).
+     * Single channel resolves to its own channel code.
      */
     public function testAutoDetectSingleChannel(): void
     {
         $channel = $this->createChannel('MAIN', 'EUR', ['en_US']);
 
         $channelRepo = $this->createMock(ChannelRepositoryInterface::class);
-        $channelRepo->method('findAll')->willReturn([$channel]);
 
         $formatter = new ProductFormatter(
-            $this->router, new ChannelMappingResolver([], $channelRepo), ['en_US'],
+            $this->router, new ChannelMappingResolver($channelRepo), ['en_US'],
         );
 
         $product = $this->createSimpleProduct($channel, $this->createPricing(1000));
         $events = $formatter->format($product);
 
-        $this->assertSame([''], $events[0]['data']['channels']);
-        $this->assertSame('EUR', $events[0]['data']['prices'][''][0]['currency']);
+        $this->assertSame(['MAIN'], $events[0]['data']['channels']);
+        $this->assertSame('EUR', $events[0]['data']['prices']['MAIN'][0]['currency']);
     }
 
     /**
-     * Multiple channels in store with no explicit mapping:
-     * first channel → "", rest → lowercased code.
+     * Multiple channels each resolve to their own channel code.
      */
     public function testAutoDetectMultipleChannels(): void
     {
@@ -1061,10 +1057,9 @@ class MarketplaceCompatibilityTest extends TestCase
         $b2bChannel = $this->createChannel('B2B', 'USD', ['en_US']);
 
         $channelRepo = $this->createMock(ChannelRepositoryInterface::class);
-        $channelRepo->method('findAll')->willReturn([$webChannel, $b2bChannel]);
 
         $formatter = new ProductFormatter(
-            $this->router, new ChannelMappingResolver([], $channelRepo), ['en_US'],
+            $this->router, new ChannelMappingResolver($channelRepo), ['en_US'],
         );
 
         $eurPricing = $this->createPricing(4999);
@@ -1078,29 +1073,24 @@ class MarketplaceCompatibilityTest extends TestCase
         $events = $formatter->format($product);
         $d = $events[0]['data'];
 
-        // First channel → "", second → "b2b"
-        $this->assertSame(['', 'b2b'], $d['channels']);
-        $this->assertSame('EUR', $d['prices'][''][0]['currency']);
-        $this->assertSame('USD', $d['prices']['b2b'][0]['currency']);
-        $this->assertSame('Multi Channel Product', $d['names']['']['en_US']);
-        $this->assertSame('Multi Channel Product', $d['names']['b2b']['en_US']);
+        $this->assertSame(['WEB_EU', 'B2B'], $d['channels']);
+        $this->assertSame('EUR', $d['prices']['WEB_EU'][0]['currency']);
+        $this->assertSame('USD', $d['prices']['B2B'][0]['currency']);
+        $this->assertSame('Multi Channel Product', $d['names']['WEB_EU']['en_US']);
+        $this->assertSame('Multi Channel Product', $d['names']['B2B']['en_US']);
     }
 
     /**
-     * Explicit mapping takes precedence over auto-detection.
+     * Channel codes are passed through directly without any mapping.
      */
-    public function testExplicitMappingOverridesAutoDetect(): void
+    public function testChannelCodesPassedThroughDirectly(): void
     {
         $webChannel = $this->createChannel('WEB_EU', 'EUR', ['en_US']);
         $b2bChannel = $this->createChannel('B2B', 'USD', ['en_US']);
 
-        $channelRepo = $this->createMock(ChannelRepositoryInterface::class);
-        // findAll should never be called when explicit mapping exists
-        $channelRepo->expects($this->never())->method('findAll');
-
         $formatter = new ProductFormatter(
             $this->router,
-            new ChannelMappingResolver(['WEB_EU' => 'storefront', 'B2B' => 'wholesale']),
+            new ChannelMappingResolver(),
             ['en_US'],
         );
 
@@ -1115,42 +1105,42 @@ class MarketplaceCompatibilityTest extends TestCase
         $events = $formatter->format($product);
         $d = $events[0]['data'];
 
-        $this->assertSame(['storefront', 'wholesale'], $d['channels']);
-        $this->assertSame('EUR', $d['prices']['storefront'][0]['currency']);
-        $this->assertSame('USD', $d['prices']['wholesale'][0]['currency']);
+        $this->assertSame(['WEB_EU', 'B2B'], $d['channels']);
+        $this->assertSame('EUR', $d['prices']['WEB_EU'][0]['currency']);
+        $this->assertSame('USD', $d['prices']['B2B'][0]['currency']);
     }
 
     /**
-     * Auto-detection is cached — repository queried only once.
+     * Resolver with repository returns channel code consistently across calls.
      */
-    public function testAutoDetectIsCached(): void
+    public function testResolverConsistentAcrossCalls(): void
     {
         $channel = $this->createChannel('MAIN', 'EUR', ['en_US']);
         $pricing = $this->createPricing(1000);
 
         $channelRepo = $this->createMock(ChannelRepositoryInterface::class);
-        $channelRepo->expects($this->once())->method('findAll')->willReturn([$channel]);
 
         $formatter = new ProductFormatter(
-            $this->router, new ChannelMappingResolver([], $channelRepo), ['en_US'],
+            $this->router, new ChannelMappingResolver($channelRepo), ['en_US'],
         );
 
         $product = $this->createSimpleProduct($channel, $pricing);
 
-        // Call format twice — findAll should only be called once
-        $formatter->format($product);
-        $formatter->format($product);
+        $events1 = $formatter->format($product);
+        $events2 = $formatter->format($product);
+
+        $this->assertSame(['MAIN'], $events1[0]['data']['channels']);
+        $this->assertSame(['MAIN'], $events2[0]['data']['channels']);
     }
 
     /**
-     * No channel repository injected and no mapping — falls back to "" for all.
+     * No channel repository injected — channels still use their own codes.
      */
-    public function testNoRepositoryFallsBackToDefault(): void
+    public function testNoRepositoryUsesChannelCodes(): void
     {
         $ch1 = $this->createChannel('CH_A', 'EUR', ['en_US']);
         $ch2 = $this->createChannel('CH_B', 'USD', ['en_US']);
 
-        // No channel repository — null
         $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US']);
 
         $eurPricing = $this->createPricing(1000);
@@ -1163,7 +1153,6 @@ class MarketplaceCompatibilityTest extends TestCase
 
         $events = $formatter->format($product);
 
-        // Both collapse to "" (same as before)
-        $this->assertSame([''], $events[0]['data']['channels']);
+        $this->assertSame(['CH_A', 'CH_B'], $events[0]['data']['channels']);
     }
 }

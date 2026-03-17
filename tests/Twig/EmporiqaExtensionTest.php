@@ -33,7 +33,6 @@ class EmporiqaExtensionTest extends TestCase
         string $storeId = 'test-store',
         string $webhookUrl = 'https://api.emporiqa.com/webhook',
         string $webhookSecret = 'test-secret',
-        array $channelMapping = [],
         bool $cartEnabled = true,
         ?ChannelContextInterface $channelContext = null,
         ?CurrencyContextInterface $currencyContext = null,
@@ -43,7 +42,7 @@ class EmporiqaExtensionTest extends TestCase
             $webhookUrl,
             $webhookSecret,
             $this->requestStack,
-            new ChannelMappingResolver($channelMapping),
+            new ChannelMappingResolver(),
             $this->security,
             $cartEnabled,
             $channelContext,
@@ -243,7 +242,7 @@ class EmporiqaExtensionTest extends TestCase
         $this->requestStack->method('getCurrentRequest')->willReturn($request);
         $this->security->method('getUser')->willReturn(null);
 
-        $extension = $this->createExtension('store-123', 'https://api.emporiqa.com/webhook', 'test-secret', [], false);
+        $extension = $this->createExtension('store-123', 'https://api.emporiqa.com/webhook', 'test-secret', false);
         $html = $extension->renderCartWidget();
 
         $this->assertStringContainsString('"cartEnabled":false', $html);
@@ -263,7 +262,6 @@ class EmporiqaExtensionTest extends TestCase
             'store-123',
             'https://api.emporiqa.com/webhook',
             'test-secret',
-            ['FASHION_WEB' => '', 'B2B' => 'b2b'],
             true,
             $this->channelContext,
         );
@@ -287,7 +285,6 @@ class EmporiqaExtensionTest extends TestCase
             'store-123',
             'https://api.emporiqa.com/webhook',
             'test-secret',
-            ['WEB' => '', 'B2B' => 'b2b'],
             true,
             $this->channelContext,
         );
@@ -295,7 +292,7 @@ class EmporiqaExtensionTest extends TestCase
         $url = $extension->getWidgetUrl();
 
         $this->assertStringContainsString('currency=GBP', $url);
-        $this->assertStringContainsString('channel=b2b', $url);
+        $this->assertStringContainsString('channel=B2B', $url);
     }
 
     public function testCurrencyContextTakesPriorityOverChannelBaseCurrency(): void
@@ -315,7 +312,6 @@ class EmporiqaExtensionTest extends TestCase
             'store-123',
             'https://api.emporiqa.com/webhook',
             'test-secret',
-            [],
             true,
             $this->channelContext,
             $currencyContext,
@@ -347,7 +343,6 @@ class EmporiqaExtensionTest extends TestCase
             'store-123',
             'https://api.emporiqa.com/webhook',
             'test-secret',
-            [],
             true,
             $this->channelContext,
             $currencyContext,
@@ -379,7 +374,7 @@ class EmporiqaExtensionTest extends TestCase
             'https://api.emporiqa.com/webhook',
             'test-secret',
             $this->requestStack,
-            new ChannelMappingResolver([], $channelRepo),
+            new ChannelMappingResolver($channelRepo),
             $this->security,
             true,
             $this->channelContext,
@@ -387,12 +382,11 @@ class EmporiqaExtensionTest extends TestCase
 
         $url = $extension->getWidgetUrl();
 
-        // WEB is first → "", B2B → "b2b", WHOLESALE → "wholesale"
-        $this->assertStringContainsString('channel=wholesale', $url);
+        $this->assertStringContainsString('channel=WHOLESALE', $url);
         $this->assertStringContainsString('currency=GBP', $url);
     }
 
-    public function testAutoDetectChannelFirstChannelReturnsEmpty(): void
+    public function testAutoDetectChannelFirstChannelReturnsChannelCode(): void
     {
         $request = $this->createMock(Request::class);
         $request->method('getLocale')->willReturn('en');
@@ -413,7 +407,7 @@ class EmporiqaExtensionTest extends TestCase
             'https://api.emporiqa.com/webhook',
             'test-secret',
             $this->requestStack,
-            new ChannelMappingResolver([], $channelRepo),
+            new ChannelMappingResolver($channelRepo),
             $this->security,
             true,
             $this->channelContext,
@@ -421,12 +415,11 @@ class EmporiqaExtensionTest extends TestCase
 
         $url = $extension->getWidgetUrl();
 
-        // First channel → "" (empty channel key)
         parse_str(parse_url($url, PHP_URL_QUERY), $params);
-        $this->assertSame('', $params['channel']);
+        $this->assertSame('WEB', $params['channel']);
     }
 
-    public function testAutoDetectSingleChannelReturnsEmpty(): void
+    public function testAutoDetectSingleChannelReturnsChannelCode(): void
     {
         $request = $this->createMock(Request::class);
         $request->method('getLocale')->willReturn('en');
@@ -445,7 +438,7 @@ class EmporiqaExtensionTest extends TestCase
             'https://api.emporiqa.com/webhook',
             'test-secret',
             $this->requestStack,
-            new ChannelMappingResolver([], $channelRepo),
+            new ChannelMappingResolver($channelRepo),
             $this->security,
             true,
             $this->channelContext,
@@ -454,7 +447,7 @@ class EmporiqaExtensionTest extends TestCase
         $url = $extension->getWidgetUrl();
 
         parse_str(parse_url($url, PHP_URL_QUERY), $params);
-        $this->assertSame('', $params['channel']);
+        $this->assertSame('WEB', $params['channel']);
     }
 
     public function testChannelContextThrowingReturnsEmptyChannel(): void
@@ -473,7 +466,6 @@ class EmporiqaExtensionTest extends TestCase
             'store-123',
             'https://api.emporiqa.com/webhook',
             'test-secret',
-            ['WEB' => '', 'B2B' => 'b2b'],
             true,
             $channelContext,
         );

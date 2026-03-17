@@ -84,7 +84,7 @@ class PageFormatter implements PageFormatterInterface
     private function getChannelKeysForPage(PageInterface $page): array
     {
         if (!$page instanceof ChannelsAwareInterface) {
-            return $this->channelMappingResolver->getAllKeys() ?: [''];
+            return $this->channelMappingResolver->getAllKeys();
         }
 
         $channels = $page->getChannels();

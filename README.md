@@ -108,7 +108,6 @@ bin/console cache:clear
 | `base_url` | string | `''` | Base URL for image paths in CLI context (e.g. `https://myshop.com`) |
 | `brand_attribute_code` | string | `'brand'` | Product attribute code used for brand/manufacturer data |
 | `enabled_languages` | string[] | `['en_US', 'de_DE']` | Sylius locale codes to sync |
-| `channel_mapping` | map | `{}` | Maps Sylius channel codes to Emporiqa channel keys |
 | `sync.products` | bool | `true` | Enable automatic product synchronization |
 | `sync.pages` | bool | `true` | Enable automatic page synchronization |
 | `page_entity_classes` | string[] | `[]` | FQCNs of page entities implementing `PageInterface` |
@@ -125,9 +124,6 @@ emporiqa:
     base_url: 'https://myshop.com'       # optional, for CLI image URLs
     brand_attribute_code: 'brand'         # optional, product attribute for brand
     enabled_languages: ['en_US', 'de_DE']
-    channel_mapping:
-        FASHION_WEB: 'web'    # maps to "web" channel in Emporiqa
-        FASHION_B2B: 'b2b'    # maps to "b2b" channel in Emporiqa
     sync:
         products: true
         pages: true
@@ -149,22 +145,9 @@ emporiqa:
     enabled_languages: ['en_US', 'de_DE']    # Syncs en_US and de_DE content
 ```
 
-### Channel Mapping
+### Channels
 
-The `channel_mapping` maps Sylius channel codes to Emporiqa channel keys. This controls how multi-channel data is organized in webhook payloads:
-
-```yaml
-emporiqa:
-    channel_mapping:
-        FASHION_WEB: 'web'    # maps to "web" channel in Emporiqa
-        FASHION_B2B: 'b2b'    # maps to "b2b" channel in Emporiqa
-```
-
-**Auto-detection**: When `channel_mapping` is empty (the default), the plugin auto-detects the mapping from the Sylius channel repository:
-- **Single channel** — maps to `""` (store-wide)
-- **Multiple channels** — first channel maps to `""`, remaining channels map to their lowercased code
-
-The mapping also determines the `channel` parameter sent with the chat widget.
+The plugin uses the Sylius channel code directly as the Emporiqa channel identifier. No mapping configuration is needed — the channel code from Sylius is passed as-is in webhook payloads and the chat widget.
 
 ## Webhook Events
 
@@ -699,7 +682,7 @@ The `window.emporiqaConfig` for the cart handler:
 window.emporiqaConfig = {
   language: "en_US",
   currency: "EUR",
-  channel: "",
+  channel: "default",
   authenticated: false,
   cartEnabled: true
 }
@@ -707,7 +690,7 @@ window.emporiqaConfig = {
 
 - **`language`** — Full Sylius locale code from the current request (e.g., `en_US`, `de_DE`). Also sent as `X-Locale` header on cart API calls for locale-aware checkout URLs.
 - **`currency`** — Resolved from the user's selected currency (`CurrencyContextInterface`), falling back to the channel's base currency.
-- **`channel`** — Emporiqa channel key resolved via `channel_mapping` from the current Sylius channel
+- **`channel`** — The current Sylius channel code (e.g., `default`, `B2B`)
 - **`authenticated`** — Boolean flag indicating login state
 
 The widget embed URL includes a signed `user_id` parameter for authenticated users — an HMAC-SHA256 signed token containing the user identifier. The token is deterministic (no timestamp) so it's safe for page caching. Anonymous pages contain no user-specific data (safe for Varnish/CDN). Authenticated pages are served with `Cache-Control: private` by Symfony.
