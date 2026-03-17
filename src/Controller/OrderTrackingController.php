@@ -19,10 +19,15 @@ class OrderTrackingController
         private string $webhookSecret,
         private OrderProviderInterface $orderProvider,
         private ?EventDispatcherInterface $eventDispatcher = null,
+        private bool $enabled = true,
     ) {}
 
     public function track(Request $request): JsonResponse
     {
+        if (!$this->enabled) {
+            return new JsonResponse(['error' => 'Not found'], Response::HTTP_NOT_FOUND);
+        }
+
         $rawBody = $request->getContent();
         $signature = $request->headers->get('X-Emporiqa-Signature', '');
 

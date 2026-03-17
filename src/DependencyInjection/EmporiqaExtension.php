@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\DependencyInjection;
 
 use Emporiqa\SyliusPlugin\Command\SyncPagesCommand;
-use Emporiqa\SyliusPlugin\Controller\CartController;
-use Emporiqa\SyliusPlugin\Controller\OrderTrackingController;
 use Emporiqa\SyliusPlugin\EventListener\PageDoctrineListener;
 use Emporiqa\SyliusPlugin\EventSubscriber\OrderCompleteSubscriber;
 use Emporiqa\SyliusPlugin\Service\PageFormatter;
@@ -29,6 +27,7 @@ class EmporiqaExtension extends Extension
         $container->setParameter('emporiqa.webhook_url', $config['webhook_url']);
         $container->setParameter('emporiqa.webhook_secret', $config['webhook_secret']);
         $container->setParameter('emporiqa.base_url', $config['base_url']);
+        $container->setParameter('emporiqa.media_base_path', $config['media_base_path']);
         $container->setParameter('emporiqa.enabled_languages', $config['enabled_languages']);
         $container->setParameter('emporiqa.brand_attribute_code', $config['brand_attribute_code']);
         $container->setParameter('emporiqa.sync.products', $config['sync']['products']);
@@ -49,12 +48,7 @@ class EmporiqaExtension extends Extension
             $this->removeServiceIfExists($container, SyncPagesCommand::class);
         }
 
-        if (!$config['order_tracking']['enabled']) {
-            $this->removeServiceIfExists($container, OrderTrackingController::class);
-        }
-
         if (!$config['cart']['enabled']) {
-            $this->removeServiceIfExists($container, CartController::class);
             $this->removeServiceIfExists($container, OrderCompleteSubscriber::class);
         }
     }

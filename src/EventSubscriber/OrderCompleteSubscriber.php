@@ -62,7 +62,7 @@ class OrderCompleteSubscriber implements EventSubscriberInterface
             $variant = $orderItem->getVariant();
 
             $items[] = [
-                'product_id' => $variant ? (string) $variant->getId() : '',
+                'product_id' => $variant ? 'variation-' . $variant->getId() : '',
                 'quantity' => $orderItem->getQuantity(),
                 'price' => CurrencyHelper::toCurrencyUnits($orderItem->getUnitPrice(), $currencyCode),
             ];

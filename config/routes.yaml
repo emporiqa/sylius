@@ -1,39 +1,5 @@
-emporiqa_order_tracking:
-    path: /emporiqa/api/order/tracking
-    controller: Emporiqa\SyliusPlugin\Controller\OrderTrackingController::track
-    methods: [POST]
+emporiqa_order_tracking_routes:
+    resource: routes/order_tracking.yaml
 
-emporiqa_cart_csrf_token:
-    path: /emporiqa/api/csrf-token
-    controller: Emporiqa\SyliusPlugin\Controller\CartController::getCsrfToken
-    methods: [GET]
-
-emporiqa_cart_get:
-    path: /emporiqa/api/cart
-    controller: Emporiqa\SyliusPlugin\Controller\CartController::getCart
-    methods: [GET]
-
-emporiqa_cart_add:
-    path: /emporiqa/api/cart/add
-    controller: Emporiqa\SyliusPlugin\Controller\CartController::add
-    methods: [POST]
-
-emporiqa_cart_update:
-    path: /emporiqa/api/cart/update
-    controller: Emporiqa\SyliusPlugin\Controller\CartController::update
-    methods: [POST]
-
-emporiqa_cart_remove:
-    path: /emporiqa/api/cart/remove
-    controller: Emporiqa\SyliusPlugin\Controller\CartController::remove
-    methods: [POST]
-
-emporiqa_cart_clear:
-    path: /emporiqa/api/cart/clear
-    controller: Emporiqa\SyliusPlugin\Controller\CartController::clear
-    methods: [POST]
-
-emporiqa_cart_checkout_url:
-    path: /emporiqa/api/cart/checkout-url
-    controller: Emporiqa\SyliusPlugin\Controller\CartController::checkoutUrl
-    methods: [GET]
+emporiqa_cart_routes:
+    resource: routes/cart.yaml

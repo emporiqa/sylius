@@ -23,6 +23,7 @@ services:
             $enabledLanguages: '%emporiqa.enabled_languages%'
             $baseUrl: '%emporiqa.base_url%'
             $brandAttributeCode: '%emporiqa.brand_attribute_code%'
+            $mediaBasePath: '%emporiqa.media_base_path%'
 
     Emporiqa\SyliusPlugin\Service\ProductFormatterInterface: '@Emporiqa\SyliusPlugin\Service\ProductFormatter'
 
@@ -73,6 +74,7 @@ services:
     Emporiqa\SyliusPlugin\Controller\OrderTrackingController:
         arguments:
             $webhookSecret: '%emporiqa.webhook_secret%'
+            $enabled: '%emporiqa.order_tracking.enabled%'
         tags: ['controller.service_arguments']
 
     Emporiqa\SyliusPlugin\Controller\CartController:
@@ -88,6 +90,8 @@ services:
             $security: '@?Symfony\Bundle\SecurityBundle\Security'
             $csrfTokenManager: '@?Symfony\Component\Security\Csrf\CsrfTokenManagerInterface'
             $eventDispatcher: '@?Symfony\Contracts\EventDispatcher\EventDispatcherInterface'
+            $enabled: '%emporiqa.cart.enabled%'
+            $mediaBasePath: '%emporiqa.media_base_path%'
         tags: ['controller.service_arguments']
 
     Emporiqa\SyliusPlugin\EventSubscriber\OrderCompleteSubscriber: ~

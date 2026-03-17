@@ -41,10 +41,25 @@ class CartController
         private ?Security $security = null,
         private ?CsrfTokenManagerInterface $csrfTokenManager = null,
         private ?EventDispatcherInterface $eventDispatcher = null,
+        private bool $enabled = true,
+        private string $mediaBasePath = '/media/image/',
     ) {}
+
+    private function guardEnabled(): ?JsonResponse
+    {
+        if (!$this->enabled) {
+            return new JsonResponse(['error' => 'Not found'], Response::HTTP_NOT_FOUND);
+        }
+
+        return null;
+    }
 
     public function getCsrfToken(): JsonResponse
     {
+        if ($notFound = $this->guardEnabled()) {
+            return $notFound;
+        }
+
         if (!$this->csrfTokenManager) {
             return new JsonResponse(['token' => '']);
         }
@@ -58,6 +73,10 @@ class CartController
 
     public function getCart(Request $request): JsonResponse
     {
+        if ($notFound = $this->guardEnabled()) {
+            return $notFound;
+        }
+
         try {
             $cart = $this->cartContext->getCart();
         } catch (CartNotFoundException) {
@@ -80,6 +99,10 @@ class CartController
 
     public function add(Request $request): JsonResponse
     {
+        if ($notFound = $this->guardEnabled()) {
+            return $notFound;
+        }
+
         if ($error = $this->validateCsrf($request)) {
             return $error;
         }
@@ -157,6 +180,10 @@ class CartController
 
     public function update(Request $request): JsonResponse
     {
+        if ($notFound = $this->guardEnabled()) {
+            return $notFound;
+        }
+
         if ($error = $this->validateCsrf($request)) {
             return $error;
         }
@@ -211,6 +238,10 @@ class CartController
 
     public function remove(Request $request): JsonResponse
     {
+        if ($notFound = $this->guardEnabled()) {
+            return $notFound;
+        }
+
         if ($error = $this->validateCsrf($request)) {
             return $error;
         }
@@ -262,6 +293,10 @@ class CartController
 
     public function clear(Request $request): JsonResponse
     {
+        if ($notFound = $this->guardEnabled()) {
+            return $notFound;
+        }
+
         if ($error = $this->validateCsrf($request)) {
             return $error;
         }
@@ -301,6 +336,10 @@ class CartController
 
     public function checkoutUrl(Request $request): JsonResponse
     {
+        if ($notFound = $this->guardEnabled()) {
+            return $notFound;
+        }
+
         try {
             /** @var OrderInterface $cart */
             $cart = $this->cartContext->getCart();
@@ -499,7 +538,9 @@ class CartController
         $host = $context->getHost();
         $baseUrl = $host ? $scheme . '://' . $host : '';
 
-        return $baseUrl . '/media/image/' . ltrim($path, '/');
+        $mediaBase = rtrim($this->mediaBasePath, '/');
+
+        return $baseUrl . $mediaBase . '/' . ltrim($path, '/');
     }
 
     private function dispatchCartOperation(string $operation, array $parameters): ?JsonResponse

@@ -26,6 +26,7 @@ class ProductFormatter implements ProductFormatterInterface
         private array $enabledLanguages = [],
         private string $baseUrl = '',
         private string $brandAttributeCode = 'brand',
+        private string $mediaBasePath = '/media/image/',
         private ?LoggerInterface $logger = null,
     ) {}
 
@@ -330,7 +331,16 @@ class ProductFormatter implements ProductFormatterInterface
 
         $intersected = array_intersect($this->enabledLanguages, $channelLocales);
 
-        return !empty($intersected) ? array_values($intersected) : $this->enabledLanguages;
+        if (empty($intersected)) {
+            $this->logger?->warning('No overlap between enabled_languages and channel locales', [
+                'enabled_languages' => $this->enabledLanguages,
+                'channel_locales' => $channelLocales,
+            ]);
+
+            return [];
+        }
+
+        return array_values($intersected);
     }
 
     private function getChannelPrices(ChannelInterface $channel, ?ProductVariantInterface $variant): array
@@ -459,7 +469,21 @@ class ProductFormatter implements ProductFormatterInterface
 
         foreach ($product->getAttributes() as $attributeValue) {
             if (strtolower($attributeValue->getAttribute()?->getCode() ?? '') === $targetCode) {
-                return $attributeValue->getValue();
+                $value = $attributeValue->getValue();
+
+                if (is_string($value)) {
+                    return $value;
+                }
+
+                if (is_array($value)) {
+                    return implode(', ', array_filter($value, 'is_string'));
+                }
+
+                if (is_scalar($value)) {
+                    return (string) $value;
+                }
+
+                return null;
             }
         }
 
@@ -570,6 +594,8 @@ class ProductFormatter implements ProductFormatterInterface
             $base = rtrim($this->baseUrl, '/');
         }
 
-        return $base . '/media/image/' . ltrim($path, '/');
+        $mediaBase = rtrim($this->mediaBasePath, '/');
+
+        return $base . $mediaBase . '/' . ltrim($path, '/');
     }
 }

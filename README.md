@@ -102,10 +102,11 @@ bin/console cache:clear
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `store_id` | string | `%env(EMPORIQA_STORE_ID)%` | Emporiqa store identifier |
-| `webhook_url` | string | `%env(EMPORIQA_WEBHOOK_URL)%` | Emporiqa webhook endpoint |
+| `store_id` | string | **required** | Emporiqa store identifier (e.g. `'%env(EMPORIQA_STORE_ID)%'`) |
+| `webhook_url` | string | **required** | Emporiqa webhook endpoint (e.g. `'%env(EMPORIQA_WEBHOOK_URL)%'`) |
 | `webhook_secret` | string | **required** | HMAC-SHA256 signing key for webhook authentication |
 | `base_url` | string | `''` | Base URL for image paths in CLI context (e.g. `https://myshop.com`) |
+| `media_base_path` | string | `'/media/image/'` | Base path for product images. Customize for CDN or non-default media storage |
 | `brand_attribute_code` | string | `'brand'` | Product attribute code used for brand/manufacturer data |
 | `enabled_languages` | string[] | `['en_US', 'de_DE']` | Sylius locale codes to sync |
 | `sync.products` | bool | `true` | Enable automatic product synchronization |
@@ -122,6 +123,7 @@ emporiqa:
     webhook_url: '%env(EMPORIQA_WEBHOOK_URL)%'
     webhook_secret: '%env(EMPORIQA_WEBHOOK_SECRET)%'
     base_url: 'https://myshop.com'       # optional, for CLI image URLs
+    media_base_path: '/media/image/'     # optional, customize for CDN/S3/LiipImagine
     brand_attribute_code: 'brand'         # optional, product attribute for brand
     enabled_languages: ['en_US', 'de_DE']
     sync:
