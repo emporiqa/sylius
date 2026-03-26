@@ -2,6 +2,31 @@
 
 Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=gitlab&utm_medium=readme&utm_campaign=sylius_plugin) chat assistant. This plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks — enabling a chat assistant that can answer customer questions, manage their cart, and track orders.
 
+A customer asks: "I need headphones for work under 500. Can I pay with Visa, and can I return them within a week?"
+
+The assistant searches your catalog, finds matching products, checks your payment and return pages, and answers everything in one message. The customer compares, adds to cart, and proceeds to checkout — all from the chat.
+
+[![Product Demo](https://img.youtube.com/vi/cTWuHs5fziM/maxresdefault.jpg)](https://www.youtube.com/watch?v=cTWuHs5fziM)
+
+Try it yourself on the [live demo store](https://demo.emporiqa.com).
+
+**What it does:**
+
+- Searches your product catalog by what customers actually mean, not just keywords
+- Answers questions about shipping, returns, and payment from your store pages
+- Compares products side by side
+- Adds to cart and sends customers to checkout
+- Tracks which chat conversations led to purchases — full conversion funnel with chat-attributed revenue
+- Starts conversations automatically based on customer behavior (time on page, pages visited, checkout page)
+- Rates customer satisfaction after each conversation (thumbs up/down with aggregate scores)
+- Hands off to your team when it can't help
+- Works in 65+ languages
+- Unlimited conversations, unlimited team members — no per-message or per-seat fees
+
+**Launch Offer**
+
+The plugin is free. Start with a free sandbox store (100 products, 20 pages) to test the integration. Ready to go live? Email rosen@emporiqa.com and get 3 months free on any paid plan.
+
 ## Features
 
 - **Product Sync** — Real-time synchronization of Sylius products and variants via webhooks
@@ -15,6 +40,8 @@ Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm
 - **Console Commands** — Memory-efficient sync commands with batching, dry-run, and session management
 - **Webhook Retry** — Automatic retry with exponential backoff for transient failures
 - **Fully Extensible** — Decorate any service interface, listen to events (`PostFormatEvent`, `CartOperationEvent`, `PreSyncEvent`, etc.)
+
+Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, Shopware, and any store via webhook API. Same platform, same dashboard, same assistant.
 
 ## Requirements
 
@@ -914,6 +941,10 @@ After configuration changes:
 ```bash
 bin/console cache:clear
 ```
+
+## Pricing
+
+The plugin is free. Emporiqa plans start at $59/month (Starter, 2,000 products). All plans include unlimited conversations, unlimited team members, and a 14-day free trial. Sandbox stores are free forever (100 products, 20 pages). See [pricing](https://emporiqa.com/#pricing).
 
 ## Support
 
