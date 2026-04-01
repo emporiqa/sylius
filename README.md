@@ -2,11 +2,11 @@
 
 Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=gitlab&utm_medium=readme&utm_campaign=sylius_plugin) chat assistant. This plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks — enabling a chat assistant that can answer customer questions, manage their cart, and track orders.
 
-A customer asks: "I need headphones for work under 500. Can I pay with Visa, and can I return them within a week?"
+A customer types "organic face cream for sensitive skin, under 30" into your store. Your search returns every cream you sell. The customer wanted three specific things and got none of them filtered.
 
-The assistant searches your catalog, finds matching products, checks your payment and return pages, and answers everything in one message. The customer compares, adds to cart, and proceeds to checkout — all from the chat.
+The assistant finds matching products from your catalog, answers questions about shipping and returns from your own pages, compares items, and lets them add to cart and proceed to checkout — all from the chat.
 
-[![Product Demo](https://img.youtube.com/vi/cTWuHs5fziM/maxresdefault.jpg)](https://www.youtube.com/watch?v=cTWuHs5fziM)
+[![Product Demo](https://img.youtube.com/vi/b6cosw5O-lw/maxresdefault.jpg)](https://www.youtube.com/watch?v=b6cosw5O-lw)
 
 Try it yourself on the [live demo store](https://demo.emporiqa.com).
 
