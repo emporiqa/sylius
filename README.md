@@ -21,7 +21,7 @@ Try it yourself on the [live demo store](https://demo.emporiqa.com).
 - Rates customer satisfaction after each conversation (thumbs up/down with aggregate scores)
 - Hands off to your team when it can't help
 - Works in 65+ languages
-- Unlimited conversations, unlimited team members — no per-message or per-seat fees
+- Generous conversation limits, unlimited team members — no per-seat fees
 
 **Launch Offer**
 
@@ -131,7 +131,7 @@ bin/console cache:clear
 |---------|------|---------|-------------|
 | `store_id` | string | **required** | Emporiqa store identifier (e.g. `'%env(EMPORIQA_STORE_ID)%'`) |
 | `webhook_url` | string | **required** | Emporiqa webhook endpoint (e.g. `'%env(EMPORIQA_WEBHOOK_URL)%'`) |
-| `webhook_secret` | string | **required** | HMAC-SHA256 signing key for webhook authentication |
+| `webhook_secret` | string | **required** | Connection secret from your Emporiqa dashboard (HMAC-SHA256 signing key) |
 | `base_url` | string | `''` | Base URL for image paths in CLI context (e.g. `https://myshop.com`) |
 | `media_base_path` | string | `'/media/image/'` | Base path for product images. Customize for CDN or non-default media storage |
 | `brand_attribute_code` | string | `'brand'` | Product attribute code used for brand/manufacturer data |
@@ -441,7 +441,7 @@ Emporiqa sends a signed JSON body:
 | `user_id` | string | no | Customer's user ID (if identified) |
 | `verification_fields` | object | no | Additional verification (e.g. email) |
 
-The `X-Emporiqa-Signature` header contains the HMAC-SHA256 signature of the raw request body, signed with your `webhook_secret`.
+The `X-Emporiqa-Signature` header contains the HMAC-SHA256 signature of the raw request body, signed with your connection secret (`webhook_secret` config value).
 
 ### Response Format
 
@@ -944,7 +944,7 @@ bin/console cache:clear
 
 ## Pricing
 
-The plugin is free. Emporiqa plans start at $59/month (Starter, 2,000 products). All plans include unlimited conversations, unlimited team members, and a 14-day free trial. Sandbox stores are free forever (100 products, 20 pages). See [pricing](https://emporiqa.com/#pricing).
+The plugin is free. Emporiqa plans start at $59/month (Starter, 2,000 products). All plans include generous conversation limits, unlimited team members, and a 14-day free trial. Sandbox stores are free forever (100 products, 20 pages). See [pricing](https://emporiqa.com/#pricing).
 
 ## Support
 
