@@ -6,7 +6,7 @@ A shopper types "organic face cream for sensitive skin, under 30" into your stor
 
 The chatbot acts like an online salesperson — shoppers describe what they need (or upload a photo of something they like), it finds matching products from your catalog, handles objections, answers questions from your own pages, compares items, and walks them to cart and checkout.
 
-[![Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](https://emporiqa.com/static/website/images/frontend/01-product-search.jpg)](https://demo.emporiqa.com)
+[![Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](docs/images/product-search.jpg)](https://demo.emporiqa.com)
 
 Try it yourself on the [live demo store](https://demo.emporiqa.com).
 
@@ -38,6 +38,8 @@ The plugin is free. Start with a free sandbox store (100 products, 20 pages) to 
 - **Order Tracking** — API endpoint for order lookup with HMAC signature and replay protection
 - **Order Completion** — Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
 - **Chat Widget** — Cache-safe embeddable chat widget with inline signed user tokens and currency/channel awareness
+- **Visual Search** — Shoppers upload a photo in the widget; the chatbot matches it against your synced Sylius catalog (no extra config required)
+- **Brand-Safe Answers** — The chatbot only answers from products and pages you've synced. No hallucinated products, prices, or policies; low-confidence replies hand off to your team
 - **Multi-language** — Syncs content in all configured Sylius locales with currency switcher support
 - **Console Commands** — Memory-efficient sync commands with batching, dry-run, and session management
 - **Webhook Retry** — Automatic retry with exponential backoff for transient failures
@@ -936,6 +938,13 @@ bin/console emporiqa:test-connection -v
 3. Check browser console for JavaScript errors
 4. View page source and look for the `<script async src="...emporiqa.com/chat/embed/...">` tag
 
+### Visual Search Not Returning Matches
+
+1. Confirm the uploaded image is JPEG, PNG, WebP, or GIF — other formats are rejected at upload
+2. Max upload size is 5 MB; larger files are rejected
+3. Check the browser console for upload errors (CORS, network)
+4. If matches are weak, verify your products actually sync with images — the chatbot describes the photo and searches by that description, so catalog image coverage and descriptive product names matter
+
 ### Cache Issues
 
 After configuration changes:
@@ -946,7 +955,7 @@ bin/console cache:clear
 
 ## Pricing
 
-The plugin is free. Emporiqa plans start at $59/month (Starter, 2,000 products). All plans include generous conversation limits, unlimited team members, and a 14-day free trial. Sandbox stores are free forever (100 products, 20 pages). See [pricing](https://emporiqa.com/#pricing).
+The plugin is free. Emporiqa plans start at $59/month (Starter, 2,000 products). All plans include generous conversation limits, unlimited team members, and a 14-day free trial. Sandbox stores are free forever (100 products, 20 pages). See [pricing](https://emporiqa.com/pricing/).
 
 ## Support
 
