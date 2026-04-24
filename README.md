@@ -1,31 +1,33 @@
 # Emporiqa Sylius Plugin
 
-Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=gitlab&utm_medium=readme&utm_campaign=sylius_plugin) chat assistant. This plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks — enabling a chat assistant that can answer customer questions, manage their cart, and track orders.
+Integrates [Sylius](https://sylius.com) with the [Emporiqa](https://emporiqa.com?utm_source=gitlab&utm_medium=readme&utm_campaign=sylius_plugin) AI chatbot — an online salesperson that closes sales in your Sylius store. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks.
 
-A customer types "organic face cream for sensitive skin, under 30" into your store. Your search returns every cream you sell. The customer wanted three specific things and got none of them filtered.
+A shopper types "organic face cream for sensitive skin, under 30" into your store. Your search returns every cream you sell. The shopper wanted three specific things and got none of them filtered.
 
-The assistant finds matching products from your catalog, answers questions about shipping and returns from your own pages, compares items, and lets them add to cart and proceed to checkout — all from the chat.
+The chatbot acts like an online salesperson — shoppers describe what they need (or upload a photo of something they like), it finds matching products from your catalog, handles objections, answers questions from your own pages, compares items, and walks them to cart and checkout.
 
-[![Product Demo](https://img.youtube.com/vi/b6cosw5O-lw/maxresdefault.jpg)](https://www.youtube.com/watch?v=b6cosw5O-lw)
+[![Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](https://emporiqa.com/static/website/images/frontend/01-product-search.jpg)](https://demo.emporiqa.com)
 
 Try it yourself on the [live demo store](https://demo.emporiqa.com).
 
 **What it does:**
 
-- Searches your product catalog by what customers actually mean, not just keywords
+- Closes sales — handles objections like "too expensive" by suggesting alternatives from your catalog, instead of giving up
+- Searches your product catalog by what shoppers actually mean, not just keywords
+- Visual search — a shopper uploads a photo (something they saw on social, a style they like), the chatbot describes it and finds matching products in your catalog
 - Answers questions about shipping, returns, and payment from your store pages
 - Compares products side by side
-- Adds to cart and sends customers to checkout
+- Adds to cart and sends shoppers to checkout
 - Tracks which chat conversations led to purchases — full conversion funnel with chat-attributed revenue
-- Starts conversations automatically based on customer behavior (time on page, pages visited, checkout page)
-- Rates customer satisfaction after each conversation (thumbs up/down with aggregate scores)
+- Starts conversations automatically based on shopper behavior (time on page, pages visited, checkout page)
+- Rates shopper satisfaction after each conversation (thumbs up/down with aggregate scores)
 - Hands off to your team when it can't help
 - Works in 65+ languages
 - Generous conversation limits, unlimited team members — no per-seat fees
 
-**Launch Offer**
+**Pricing**
 
-The plugin is free. Start with a free sandbox store (100 products, 20 pages) to test the integration. Ready to go live? Email rosen@emporiqa.com and get 3 months free on any paid plan.
+The plugin is free. Start with a free sandbox store (100 products, 20 pages) to test the integration end-to-end. Paid plans start at $59/month with a 14-day free trial.
 
 ## Features
 
