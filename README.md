@@ -959,6 +959,7 @@ The plugin is free. Emporiqa plans start at $59/month (Starter, 2,000 products).
 
 ## Support
 
+- **Integration overview**: [https://emporiqa.com/integrations/sylius/](https://emporiqa.com/integrations/sylius/)
 - **Documentation**: [https://emporiqa.com/docs/sylius/](https://emporiqa.com/docs/sylius/)
 - **Issues**: [https://gitlab.com/emporiqa/integrations/sylius/-/issues](https://gitlab.com/emporiqa/integrations/sylius/-/issues)
 - **Email**: support@emporiqa.com
