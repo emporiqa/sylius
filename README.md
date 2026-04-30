@@ -6,7 +6,7 @@ A shopper types "organic face cream for sensitive skin, under 30" into your stor
 
 The chatbot acts like an online salesperson — shoppers describe what they need (or upload a photo of something they like), it finds matching products from your catalog, handles objections, answers questions from your own pages, compares items, and walks them to cart and checkout.
 
-[![Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](docs/images/product-search.jpg)](https://demo.emporiqa.com)
+[Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](https://demo.emporiqa.com)
 
 Try it yourself on the [live demo store](https://demo.emporiqa.com).
 
@@ -23,11 +23,7 @@ Try it yourself on the [live demo store](https://demo.emporiqa.com).
 - Rates shopper satisfaction after each conversation (thumbs up/down with aggregate scores)
 - Hands off to your team when it can't help
 - Works in 65+ languages
-- Generous conversation limits, unlimited team members — no per-seat fees
-
-**Pricing**
-
-The plugin is free. Start with a free sandbox store (100 products, 20 pages) to test the integration end-to-end. Paid plans start at $59/month with a 14-day free trial.
+- Unlimited team members on every plan, no per-seat fees
 
 ## Features
 
@@ -39,7 +35,7 @@ The plugin is free. Start with a free sandbox store (100 products, 20 pages) to 
 - **Order Completion** — Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
 - **Chat Widget** — Cache-safe embeddable chat widget with inline signed user tokens and currency/channel awareness
 - **Visual Search** — Shoppers upload a photo in the widget; the chatbot matches it against your synced Sylius catalog (no extra config required)
-- **Brand-Safe Answers** — The chatbot only answers from products and pages you've synced. No hallucinated products, prices, or policies; low-confidence replies hand off to your team
+- **Brand-Safe Answers** — Every reply comes from your synced products and pages, never from training data. Low-confidence questions hand off to your team
 - **Multi-language** — Syncs content in all configured Sylius locales with currency switcher support
 - **Console Commands** — Memory-efficient sync commands with batching, dry-run, and session management
 - **Webhook Retry** — Automatic retry with exponential backoff for transient failures
@@ -131,20 +127,22 @@ bin/console cache:clear
 
 ## Configuration Reference
 
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `store_id` | string | **required** | Emporiqa store identifier (e.g. `'%env(EMPORIQA_STORE_ID)%'`) |
-| `webhook_url` | string | **required** | Emporiqa webhook endpoint (e.g. `'%env(EMPORIQA_WEBHOOK_URL)%'`) |
-| `webhook_secret` | string | **required** | Connection secret from your Emporiqa dashboard (HMAC-SHA256 signing key) |
-| `base_url` | string | `''` | Base URL for image paths in CLI context (e.g. `https://myshop.com`) |
-| `media_base_path` | string | `'/media/image/'` | Base path for product images. Customize for CDN or non-default media storage |
-| `brand_attribute_code` | string | `'brand'` | Product attribute code used for brand/manufacturer data |
-| `enabled_languages` | string[] | `['en_US', 'de_DE']` | Sylius locale codes to sync |
-| `sync.products` | bool | `true` | Enable automatic product synchronization |
-| `sync.pages` | bool | `true` | Enable automatic page synchronization |
-| `page_entity_classes` | string[] | `[]` | FQCNs of page entities implementing `PageInterface` |
-| `order_tracking.enabled` | bool | `true` | Enable the order tracking API endpoint |
-| `cart.enabled` | bool | `true` | Enable cart API endpoints and order completion webhook |
+
+| Setting                  | Type     | Default              | Description                                                                  |
+| ------------------------ | -------- | -------------------- | ---------------------------------------------------------------------------- |
+| `store_id`               | string   | **required**         | Emporiqa store identifier (e.g. `'%env(EMPORIQA_STORE_ID)%'`)                |
+| `webhook_url`            | string   | **required**         | Emporiqa webhook endpoint (e.g. `'%env(EMPORIQA_WEBHOOK_URL)%'`)             |
+| `webhook_secret`         | string   | **required**         | Connection secret from your Emporiqa dashboard (HMAC-SHA256 signing key)     |
+| `base_url`               | string   | `''`                 | Base URL for image paths in CLI context (e.g. `https://myshop.com`)          |
+| `media_base_path`        | string   | `'/media/image/'`    | Base path for product images. Customize for CDN or non-default media storage |
+| `brand_attribute_code`   | string   | `'brand'`            | Product attribute code used for brand/manufacturer data                      |
+| `enabled_languages`      | string[] | `['en_US', 'de_DE']` | Sylius locale codes to sync                                                  |
+| `sync.products`          | bool     | `true`               | Enable automatic product synchronization                                     |
+| `sync.pages`             | bool     | `true`               | Enable automatic page synchronization                                        |
+| `page_entity_classes`    | string[] | `[]`                 | FQCNs of page entities implementing `PageInterface`                          |
+| `order_tracking.enabled` | bool     | `true`               | Enable the order tracking API endpoint                                       |
+| `cart.enabled`           | bool     | `true`               | Enable cart API endpoints and order completion webhook                       |
+
 
 ### Full Configuration Example
 
@@ -199,30 +197,34 @@ All requests include an `X-Webhook-Signature` header containing an HMAC-SHA256 s
 
 ### Event Types
 
-| Event | Trigger | Description |
-|-------|---------|-------------|
-| `product.created` | Product created in Sylius admin | Sends consolidated product + variant data |
-| `product.updated` | Product or variant updated | Sends consolidated product + variant data |
-| `product.deleted` | Product or variant deleted | Sends `identification_number` only |
-| `page.created` | Page entity persisted via Doctrine | Sends consolidated page data |
-| `page.updated` | Page entity updated via Doctrine | Sends consolidated page data |
-| `page.deleted` | Page entity removed via Doctrine | Sends `identification_number` only |
-| `sync.start` | CLI sync command begins | Includes `session_id` and `entity` |
-| `sync.complete` | CLI sync command finishes | Items not in session can be marked deleted |
-| `order.completed` | Checkout workflow completes | Order total, items, currency, session ID |
+
+| Event             | Trigger                            | Description                                |
+| ----------------- | ---------------------------------- | ------------------------------------------ |
+| `product.created` | Product created in Sylius admin    | Sends consolidated product + variant data  |
+| `product.updated` | Product or variant updated         | Sends consolidated product + variant data  |
+| `product.deleted` | Product or variant deleted         | Sends `identification_number` only         |
+| `page.created`    | Page entity persisted via Doctrine | Sends consolidated page data               |
+| `page.updated`    | Page entity updated via Doctrine   | Sends consolidated page data               |
+| `page.deleted`    | Page entity removed via Doctrine   | Sends `identification_number` only         |
+| `sync.start`      | CLI sync command begins            | Includes `session_id` and `entity`         |
+| `sync.complete`   | CLI sync command finishes          | Items not in session can be marked deleted |
+| `order.completed` | Checkout workflow completes        | Order total, items, currency, session ID   |
+
 
 ### Sylius Events Listened To
 
 Products use Sylius resource events:
 
-| Sylius Event | Plugin Handler |
-|-------------|----------------|
-| `sylius.product.post_create` | Sends `product.created` |
-| `sylius.product.post_update` | Sends `product.updated` |
-| `sylius.product.pre_delete` | Sends `product.deleted` |
-| `sylius.product_variant.post_create` | Sends parent product update |
-| `sylius.product_variant.post_update` | Sends parent product update |
-| `sylius.product_variant.pre_delete` | Sends variant `product.deleted` |
+
+| Sylius Event                         | Plugin Handler                  |
+| ------------------------------------ | ------------------------------- |
+| `sylius.product.post_create`         | Sends `product.created`         |
+| `sylius.product.post_update`         | Sends `product.updated`         |
+| `sylius.product.pre_delete`          | Sends `product.deleted`         |
+| `sylius.product_variant.post_create` | Sends parent product update     |
+| `sylius.product_variant.post_update` | Sends parent product update     |
+| `sylius.product_variant.pre_delete`  | Sends variant `product.deleted` |
+
 
 Pages use Doctrine lifecycle events (`postPersist`, `postUpdate`, `preRemove`) and only fire for entities that match the configured `page_entity_classes` and implement `PageInterface`.
 
@@ -354,7 +356,7 @@ class StaticPage implements TranslatableInterface, PageInterface
 }
 ```
 
-2. Register the entity class in configuration:
+1. Register the entity class in configuration:
 
 ```yaml
 emporiqa:
@@ -438,12 +440,14 @@ Emporiqa sends a signed JSON body:
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `order_identifier` | string | yes | Order number provided by the customer |
-| `timestamp` | integer | yes | Unix timestamp of the request |
-| `user_id` | string | no | Customer's user ID (if identified) |
-| `verification_fields` | object | no | Additional verification (e.g. email) |
+
+| Field                 | Type    | Required | Description                           |
+| --------------------- | ------- | -------- | ------------------------------------- |
+| `order_identifier`    | string  | yes      | Order number provided by the customer |
+| `timestamp`           | integer | yes      | Unix timestamp of the request         |
+| `user_id`             | string  | no       | Customer's user ID (if identified)    |
+| `verification_fields` | object  | no       | Additional verification (e.g. email)  |
+
 
 The `X-Emporiqa-Signature` header contains the HMAC-SHA256 signature of the raw request body, signed with your connection secret (`webhook_secret` config value).
 
@@ -471,14 +475,16 @@ The built-in `OrderProvider` looks up orders by number via Sylius's `OrderReposi
 
 Order status is resolved from Sylius payment and shipping states:
 
-| Sylius State | Returned Status |
-|-------------|-----------------|
-| Awaiting payment | `pending_payment` |
-| Paid, not shipped | `processing` |
+
+| Sylius State      | Returned Status     |
+| ----------------- | ------------------- |
+| Awaiting payment  | `pending_payment`   |
+| Paid, not shipped | `processing`        |
 | Partially shipped | `partially_shipped` |
-| Shipped | `shipped` |
-| Refunded | `refunded` |
-| Cancelled | `cancelled` |
+| Shipped           | `shipped`           |
+| Refunded          | `refunded`          |
+| Cancelled         | `cancelled`         |
+
 
 ### Customizing Order Lookup
 
@@ -538,14 +544,16 @@ The plugin provides a REST API for in-chat cart operations. The Emporiqa chat wi
 
 ### Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/emporiqa/api/cart` | View current cart |
-| `POST` | `/emporiqa/api/cart/add` | Add items to cart |
-| `POST` | `/emporiqa/api/cart/update` | Update item quantity |
-| `POST` | `/emporiqa/api/cart/remove` | Remove item from cart |
-| `POST` | `/emporiqa/api/cart/clear` | Clear all items |
-| `GET` | `/emporiqa/api/cart/checkout-url` | Get checkout URL |
+
+| Method | Path                              | Description           |
+| ------ | --------------------------------- | --------------------- |
+| `GET`  | `/emporiqa/api/cart`              | View current cart     |
+| `POST` | `/emporiqa/api/cart/add`          | Add items to cart     |
+| `POST` | `/emporiqa/api/cart/update`       | Update item quantity  |
+| `POST` | `/emporiqa/api/cart/remove`       | Remove item from cart |
+| `POST` | `/emporiqa/api/cart/clear`        | Clear all items       |
+| `GET`  | `/emporiqa/api/cart/checkout-url` | Get checkout URL      |
+
 
 ### Cart Response Format
 
@@ -616,6 +624,7 @@ When a customer completes checkout, the plugin sends an `order.completed` webhoo
 4. Emporiqa uses the session ID to attribute the conversion to the chat interaction
 
 The subscriber works with both state machine engines:
+
 - **Sylius 2.x** — Listens to `workflow.sylius_order_checkout.completed.complete` (Symfony Workflow)
 - **Sylius 1.x** — Listens to `winzou.state_machine.sylius_order_checkout.post_transition.complete` (Winzou)
 
@@ -670,11 +679,13 @@ bin/console emporiqa:test-connection
 
 All sync commands support:
 
-| Option | Description |
-|--------|-------------|
-| `--batch-size=50` | Number of events per webhook request |
-| `--dry-run` | Format data without sending webhooks |
-| `--no-session` | Skip `sync.start`/`sync.complete` session events |
+
+| Option            | Description                                      |
+| ----------------- | ------------------------------------------------ |
+| `--batch-size=50` | Number of events per webhook request             |
+| `--dry-run`       | Format data without sending webhooks             |
+| `--no-session`    | Skip `sync.start`/`sync.complete` session events |
+
 
 ### Sync Sessions
 
@@ -704,6 +715,7 @@ The plugin provides Twig functions to embed the Emporiqa chat widget:
 ```
 
 This renders:
+
 1. A `<script>` block setting `window.emporiqaConfig` with `language`, `currency`, `channel`, `authenticated`, and `cartEnabled` — used by the cart handler JS
 2. `emporiqa-cart.js` — Registers `window.EmporiqaCartHandler` for in-chat cart operations
 3. The widget embed `<script>` tag with all parameters (store ID, language, currency, channel, and signed user token) in the URL
@@ -721,10 +733,10 @@ window.emporiqaConfig = {
 }
 ```
 
-- **`language`** — Full Sylius locale code from the current request (e.g., `en_US`, `de_DE`). Also sent as `X-Locale` header on cart API calls for locale-aware checkout URLs.
-- **`currency`** — Resolved from the user's selected currency (`CurrencyContextInterface`), falling back to the channel's base currency.
-- **`channel`** — The current Sylius channel code (e.g., `default`, `B2B`)
-- **`authenticated`** — Boolean flag indicating login state
+- `**language**` — Full Sylius locale code from the current request (e.g., `en_US`, `de_DE`). Also sent as `X-Locale` header on cart API calls for locale-aware checkout URLs.
+- `**currency**` — Resolved from the user's selected currency (`CurrencyContextInterface`), falling back to the channel's base currency.
+- `**channel**` — The current Sylius channel code (e.g., `default`, `B2B`)
+- `**authenticated**` — Boolean flag indicating login state
 
 The widget embed URL includes a signed `user_id` parameter for authenticated users — an HMAC-SHA256 signed token containing the user identifier. The token is deterministic (no timestamp) so it's safe for page caching. Anonymous pages contain no user-specific data (safe for Varnish/CDN). Authenticated pages are served with `Cache-Control: private` by Symfony.
 
@@ -762,25 +774,29 @@ All behavior can be customized via Symfony service decoration and event listener
 
 ### Service Interfaces
 
-| Interface | Default | What You Can Customize |
-|-----------|---------|----------------------|
-| `ProductFormatterInterface` | `ProductFormatter` | Product/variant data formatting, custom attributes |
-| `PageFormatterInterface` | `PageFormatter` | Page data formatting, custom fields |
-| `PageUrlResolverInterface` | `PageUrlResolver` | Page URL generation (default returns empty string and logs a warning) |
-| `OrderProviderInterface` | `OrderProvider` | Order lookup logic, response format, verification |
-| `WebhookSenderInterface` | `WebhookSender` | HTTP transport, retry logic, logging |
+
+| Interface                   | Default            | What You Can Customize                                                |
+| --------------------------- | ------------------ | --------------------------------------------------------------------- |
+| `ProductFormatterInterface` | `ProductFormatter` | Product/variant data formatting, custom attributes                    |
+| `PageFormatterInterface`    | `PageFormatter`    | Page data formatting, custom fields                                   |
+| `PageUrlResolverInterface`  | `PageUrlResolver`  | Page URL generation (default returns empty string and logs a warning) |
+| `OrderProviderInterface`    | `OrderProvider`    | Order lookup logic, response format, verification                     |
+| `WebhookSenderInterface`    | `WebhookSender`    | HTTP transport, retry logic, logging                                  |
+
 
 ### Events
 
 Listen to these Symfony events for fine-grained control:
 
-| Event | Constant | When | What You Can Do |
-|-------|----------|------|-----------------|
-| `emporiqa.pre_sync` | `PreSyncEvent::NAME` | Before each entity is synced | Cancel sync per entity |
-| `emporiqa.post_format` | `PostFormatEvent::NAME` | After product/page is formatted | Modify formatted data, add custom fields |
-| `emporiqa.pre_webhook_send` | `PreWebhookSendEvent::NAME` | Before batch is sent to Emporiqa | Filter or modify events before delivery |
-| `emporiqa.cart_operation` | `CartOperationEvent::NAME` | Before cart add/update/remove/clear | Cancel operation, enforce business rules |
-| `emporiqa.order_tracking` | `OrderTrackingEvent::NAME` | Before order tracking response is returned | Modify order data, add custom fields |
+
+| Event                       | Constant                    | When                                       | What You Can Do                          |
+| --------------------------- | --------------------------- | ------------------------------------------ | ---------------------------------------- |
+| `emporiqa.pre_sync`         | `PreSyncEvent::NAME`        | Before each entity is synced               | Cancel sync per entity                   |
+| `emporiqa.post_format`      | `PostFormatEvent::NAME`     | After product/page is formatted            | Modify formatted data, add custom fields |
+| `emporiqa.pre_webhook_send` | `PreWebhookSendEvent::NAME` | Before batch is sent to Emporiqa           | Filter or modify events before delivery  |
+| `emporiqa.cart_operation`   | `CartOperationEvent::NAME`  | Before cart add/update/remove/clear        | Cancel operation, enforce business rules |
+| `emporiqa.order_tracking`   | `OrderTrackingEvent::NAME`  | Before order tracking response is returned | Modify order data, add custom fields     |
+
 
 Example — modify product data before sending:
 
@@ -955,14 +971,14 @@ bin/console cache:clear
 
 ## Pricing
 
-The plugin is free. Emporiqa plans start at $59/month (Starter, 2,000 products). All plans include generous conversation limits, unlimited team members, and a 14-day free trial. Sandbox stores are free forever (100 products, 20 pages). See [pricing](https://emporiqa.com/pricing/).
+The plugin is free. Emporiqa plans start at $59/month with a 14-day free trial. Sandbox stores are free forever (100 products, 20 pages, no credit card). Full plan details at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
 
 ## Support
 
 - **Integration overview**: [https://emporiqa.com/integrations/sylius/](https://emporiqa.com/integrations/sylius/)
 - **Documentation**: [https://emporiqa.com/docs/sylius/](https://emporiqa.com/docs/sylius/)
 - **Issues**: [https://gitlab.com/emporiqa/integrations/sylius/-/issues](https://gitlab.com/emporiqa/integrations/sylius/-/issues)
-- **Email**: support@emporiqa.com
+- **Email**: [support@emporiqa.com](mailto:support@emporiqa.com)
 
 ## License
 
