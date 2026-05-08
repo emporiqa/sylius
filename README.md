@@ -1,10 +1,10 @@
 # Emporiqa Sylius Plugin
 
-Integrates [Sylius](https://sylius.com) with the [Emporiqa](https://emporiqa.com?utm_source=gitlab&utm_medium=readme&utm_campaign=sylius_plugin) AI chatbot — an online salesperson that closes sales in your Sylius store. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks.
+Integrates [Sylius](https://sylius.com) with the [Emporiqa](https://emporiqa.com?utm_source=gitlab&utm_medium=readme&utm_campaign=sylius_plugin) AI chatbot, an online salesperson that closes sales in your Sylius store. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks.
 
 A shopper types "organic face cream for sensitive skin, under 30" into your store. Your search returns every cream you sell. The shopper wanted three specific things and got none of them filtered.
 
-The chatbot acts like an online salesperson — shoppers describe what they need (or upload a photo of something they like), it finds matching products from your catalog, handles objections, answers questions from your own pages, compares items, and walks them to cart and checkout.
+The chatbot acts like an online salesperson. Shoppers describe what they need (or upload a photo of something they like), it finds matching products from your catalog, handles objections, answers questions from your own pages, compares items, and walks them to cart and checkout.
 
 [Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](https://demo.emporiqa.com)
 
@@ -12,13 +12,13 @@ Try it yourself on the [live demo store](https://demo.emporiqa.com).
 
 **What it does:**
 
-- Closes sales — handles objections like "too expensive" by suggesting alternatives from your catalog, instead of giving up
-- Searches your product catalog by what shoppers actually mean, not just keywords
-- Visual search — a shopper uploads a photo (something they saw on social, a style they like), the chatbot describes it and finds matching products in your catalog
+- Closes sales: handles objections like "too expensive" by suggesting alternatives from your catalog, instead of giving up
+- Searches your product catalog by what shoppers mean, not just keywords
+- Visual search: a shopper uploads a photo (something they saw on social, a style they like), the chatbot describes it and finds matching products in your catalog
 - Answers questions about shipping, returns, and payment from your store pages
 - Compares products side by side
 - Adds to cart and sends shoppers to checkout
-- Tracks which chat conversations led to purchases — full conversion funnel with chat-attributed revenue
+- Tracks which chats led to purchases (full conversion funnel with chat-attributed revenue)
 - Starts conversations automatically based on shopper behavior (time on page, pages visited, checkout page)
 - Rates shopper satisfaction after each conversation (thumbs up/down with aggregate scores)
 - Hands off to your team when it can't help
@@ -415,7 +415,7 @@ services:
 
 ### Disabling Page Sync
 
-If you don't need page sync, simply leave `page_entity_classes` empty (the default). When empty, the plugin will not register the `PageFormatter`, `PageDoctrineListener`, or `PageUrlResolver` services at all.
+If you don't need page sync, leave `page_entity_classes` empty (the default). When empty, the plugin will not register the `PageFormatter`, `PageDoctrineListener`, or `PageUrlResolver` services at all.
 
 ## Order Tracking
 
@@ -971,7 +971,7 @@ bin/console cache:clear
 
 ## Pricing
 
-The plugin is free. Emporiqa plans start at $59/month with a 14-day free trial. Sandbox stores are free forever (100 products, 20 pages, no credit card). Full plan details at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
+The plugin is free. Emporiqa is pay-as-you-go: $0.25 per conversation, with a $25 signup credit (about 100 free conversations) auto-applied at signup. No card required. Spend is capped at $59/month by default, and you can adjust the cap any time. The signup credit doesn't expire while your store is active. Catalogs over 30,000 products use a custom Enterprise plan. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
 
 ## Support
 
