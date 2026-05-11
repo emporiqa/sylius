@@ -6,7 +6,7 @@ A shopper types "organic face cream for sensitive skin, under 30" into your stor
 
 The chatbot acts like an online salesperson. Shoppers describe what they need (or upload a photo of something they like), it finds matching products from your catalog, handles objections, answers questions from your own pages, compares items, and walks them to cart and checkout.
 
-[Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](https://demo.emporiqa.com)
+[![Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](docs/images/product-search.jpg)](https://demo.emporiqa.com)
 
 Try it yourself on the [live demo store](https://demo.emporiqa.com).
 
