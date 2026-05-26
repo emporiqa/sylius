@@ -30,6 +30,7 @@ class EmporiqaExtension extends Extension
         $container->setParameter('emporiqa.media_base_path', $config['media_base_path']);
         $container->setParameter('emporiqa.enabled_languages', $config['enabled_languages']);
         $container->setParameter('emporiqa.brand_attribute_code', $config['brand_attribute_code']);
+        $container->setParameter('emporiqa.min_order_quantity_attribute', $config['min_order_quantity_attribute']);
         $container->setParameter('emporiqa.sync.products', $config['sync']['products']);
         $container->setParameter('emporiqa.sync.pages', $config['sync']['pages']);
         $container->setParameter('emporiqa.page_entity_classes', $config['page_entity_classes']);

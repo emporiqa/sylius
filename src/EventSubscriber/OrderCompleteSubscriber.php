@@ -55,16 +55,46 @@ class OrderCompleteSubscriber implements EventSubscriberInterface
 
     private function sendOrderCompletedWebhook(OrderInterface $order): void
     {
+        // Payment-state gate: skip cancelled-payment orders so we don't
+        // over-attribute orders that ultimately failed at the PSP.
+        // Sylius `sylius_order_checkout.complete` fires BEFORE payment
+        // is confirmed for most flows (Stripe/PayPal complete payment
+        // in the same flow → state is `awaiting_payment` then `paid`;
+        // bank-transfer orders stay `awaiting_payment` until admin
+        // marks them paid; cancelled orders move to `cancelled`).
+        // Skipping only the explicit cancelled state is the minimal-
+        // regression posture — the bulk of current production
+        // attribution (orders that complete checkout AND pay shortly
+        // after) continues to attribute. Future improvement: move
+        // emission to the payment.pay state-machine event and
+        // persist the cookie at checkout time.
+        $paymentState = $order->getPaymentState();
+        if ($paymentState === 'cancelled') {
+            $this->logger?->info(
+                'Skipping order.completed webhook for cancelled-payment order '
+                . ((string) ($order->getNumber() ?? $order->getId()))
+            );
+            return;
+        }
+
         $currencyCode = $order->getCurrencyCode() ?? '';
 
         $items = [];
         foreach ($order->getItems() as $orderItem) {
             $variant = $orderItem->getVariant();
 
+            // Null-safe — Sylius `getUnitPrice()` returns ?int and on a
+            // partially-built order can be null. Without the coalesce
+            // the CurrencyHelper::toCurrencyUnits int-typed signature
+            // raises TypeError, the outer try/catch in onOrderComplete
+            // swallows it, and the webhook silently disappears.
             $items[] = [
                 'product_id' => $variant ? 'variation-' . $variant->getId() : '',
                 'quantity' => $orderItem->getQuantity(),
-                'price' => CurrencyHelper::toCurrencyUnits($orderItem->getUnitPrice(), $currencyCode),
+                'price' => CurrencyHelper::toCurrencyUnits(
+                    (int) ($orderItem->getUnitPrice() ?? 0),
+                    $currencyCode,
+                ),
             ];
         }
 
@@ -80,7 +110,10 @@ class OrderCompleteSubscriber implements EventSubscriberInterface
 
         $data = [
             'order_id' => (string) ($order->getNumber() ?? $order->getId()),
-            'total' => CurrencyHelper::toCurrencyUnits($order->getTotal(), $currencyCode),
+            'total' => CurrencyHelper::toCurrencyUnits(
+                (int) ($order->getTotal() ?? 0),
+                $currencyCode,
+            ),
             'currency' => $currencyCode,
             'emporiqa_session_id' => $sessionId,
             'items' => $items,
@@ -88,6 +121,12 @@ class OrderCompleteSubscriber implements EventSubscriberInterface
 
         $this->webhookQueue->queue([['type' => 'order.completed', 'data' => $data]]);
 
-        $this->logger?->info('Queued order.completed webhook for order ' . $data['order_id']);
+        $this->logger?->info(
+            sprintf(
+                'Queued order.completed webhook for order %s (payment_state=%s)',
+                $data['order_id'],
+                $paymentState ?? 'unknown',
+            )
+        );
     }
 }

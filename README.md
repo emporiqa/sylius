@@ -27,21 +27,21 @@ Try it yourself on the [live demo store](https://demo.emporiqa.com).
 
 ## Features
 
-- **Product Sync** — Real-time synchronization of Sylius products and variants via webhooks
-- **Page Sync** — Synchronization of any translatable page entity (policies, FAQ, blog posts, etc.)
-- **Multi-Channel** — Consolidated events with per-channel pricing, availability, and content across all languages
-- **Cart & Checkout** — REST API for in-chat cart operations (add, update, remove, clear, view, checkout URL) with event hooks
-- **Order Tracking** — API endpoint for order lookup with HMAC signature and replay protection
-- **Order Completion** — Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
-- **Chat Widget** — Cache-safe embeddable chat widget with inline signed user tokens and currency/channel awareness
-- **Visual Search** — Shoppers upload a photo in the widget; the chatbot matches it against your synced Sylius catalog (no extra config required)
-- **Brand-Safe Answers** — Every reply comes from your synced products and pages, never from training data. Low-confidence questions hand off to your team
-- **Multi-language** — Syncs content in all configured Sylius locales with currency switcher support
-- **Console Commands** — Memory-efficient sync commands with batching, dry-run, and session management
-- **Webhook Retry** — Automatic retry with exponential backoff for transient failures
-- **Fully Extensible** — Decorate any service interface, listen to events (`PostFormatEvent`, `CartOperationEvent`, `PreSyncEvent`, etc.)
+- **Product Sync**: Real-time synchronization of Sylius products and variants via webhooks
+- **Page Sync**: Synchronization of any translatable page entity (policies, FAQ, blog posts, etc.)
+- **Multi-Channel**: Consolidated events with per-channel pricing, availability, and content across all languages
+- **Cart & Checkout**: REST API for in-chat cart operations (add, update, remove, clear, view, checkout URL) with event hooks
+- **Order Tracking**: API endpoint for order lookup with HMAC signature and replay protection
+- **Order Completion**: Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
+- **Chat Widget**: Cache-safe embeddable chat widget with inline signed user tokens and currency/channel awareness
+- **Visual Search**: Shoppers upload a photo in the widget; the chatbot matches it against your synced Sylius catalog (no extra config required)
+- **Brand-Safe Answers**: Every reply comes from your synced products and pages, never from training data. Low-confidence questions hand off to your team
+- **Multi-language**: Syncs content in all configured Sylius locales with currency switcher support
+- **Console Commands**: Memory-efficient sync commands with batching, dry-run, and session management
+- **Webhook Retry**: Automatic retry with exponential backoff for transient failures
+- **Fully Extensible**: Decorate any service interface, listen to events (`PostFormatEvent`, `CartOperationEvent`, `PreSyncEvent`, etc.)
 
-Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, Shopware, and any store via webhook API. Same platform, same dashboard, same assistant.
+Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, Shopware, and any store via webhook API. Same platform, same dashboard, same salesperson.
 
 ## Requirements
 
@@ -169,7 +169,7 @@ emporiqa:
 
 ### Language Configuration
 
-The `enabled_languages` setting must match your Sylius locale codes exactly. Locale codes are passed as-is to Emporiqa (e.g., `en_US`, `de_DE`) — no truncation is applied.
+The `enabled_languages` setting must match your Sylius locale codes exactly. Locale codes are passed as-is to Emporiqa (e.g., `en_US`, `de_DE`). No truncation is applied.
 
 ```yaml
 emporiqa:
@@ -178,7 +178,7 @@ emporiqa:
 
 ### Channels
 
-The plugin uses the Sylius channel code directly as the Emporiqa channel identifier. No mapping configuration is needed — the channel code from Sylius is passed as-is in webhook payloads and the chat widget.
+The plugin uses the Sylius channel code directly as the Emporiqa channel identifier. No mapping configuration is needed. The channel code from Sylius is passed as-is in webhook payloads and the chat widget.
 
 ## Webhook Events
 
@@ -286,7 +286,7 @@ For variable products, the parent is synced with `is_parent: true` and `variatio
 
 ### Delete Events
 
-Delete events are simplified — they contain only the `identification_number`:
+Delete events are simplified. They contain only the `identification_number`:
 
 ```json
 {
@@ -625,8 +625,8 @@ When a customer completes checkout, the plugin sends an `order.completed` webhoo
 
 The subscriber works with both state machine engines:
 
-- **Sylius 2.x** — Listens to `workflow.sylius_order_checkout.completed.complete` (Symfony Workflow)
-- **Sylius 1.x** — Listens to `winzou.state_machine.sylius_order_checkout.post_transition.complete` (Winzou)
+- **Sylius 2.x**: Listens to `workflow.sylius_order_checkout.completed.complete` (Symfony Workflow)
+- **Sylius 1.x**: Listens to `winzou.state_machine.sylius_order_checkout.post_transition.complete` (Winzou)
 
 ### Webhook Payload
 
@@ -646,6 +646,26 @@ The subscriber works with both state machine engines:
 ```
 
 The `emporiqa_sid` cookie value is validated (alphanumeric + `_-.`, max 256 chars) and sanitized before inclusion. Webhook failures are logged but never block the checkout flow.
+
+## Keeping your catalog in sync
+
+Per-product changes (price, stock, description, images, status, deletion), product variant changes, and pages on configured `page_entity_classes` flow to Emporiqa automatically via Sylius resource events and Doctrine listeners (`ProductEventSubscriber`, `PageDoctrineListener`). Order completions go through `OrderCompleteSubscriber` on the Symfony Workflow or Winzou state-machine transitions.
+
+Delivery is **synchronous**. Events queue per request and flush on `kernel.terminate`, so no `messenger:consume` worker, supervisord setup, or background cron is required. The sender retries each event up to 2 times with backoff (500 ms delay) inside the same request before logging and dropping.
+
+There is no admin UI for sync. All operator-triggered actions are CLI commands (see Console Commands below).
+
+**Re-run a full sync with `bin/console emporiqa:sync:all` when:**
+
+- You **add a new channel, locale, or currency**. Existing products won't carry the new channel, language, or price entries until they're re-saved.
+- You **rename, move, or delete a taxon**. Taxon data is embedded in each product's payload and only refreshes when the product itself is re-saved.
+- You **change tax rates or tax categories** that affect displayed prices.
+- You **create or modify promotions or promotion coupons**. Promotions are not in the product payload, but their pricing effects only appear in `current_price` when products are re-emitted.
+- You **change brand / manufacturer values** on a custom attribute (Sylius has no native brand entity, so whatever you've mapped is read at product-format time only).
+- You **import products in bulk** via Sylius fixtures, custom commands, or direct DB writes. Doctrine resource events do not fire for raw SQL or some bulk loaders.
+- **Emporiqa was unreachable for an extended period** (network outage, planned maintenance, expired credentials). Events that exceed the 2-retry budget are dropped, so only a manual full sync recovers them.
+
+As a safety net, run `bin/console emporiqa:sync:all` once a week to catch any drift that may have built up from background failures.
 
 ## Console Commands
 
@@ -691,9 +711,9 @@ All sync commands support:
 
 Full sync operations use sessions for reconciliation:
 
-1. `sync.start` — Notifies Emporiqa that a sync is beginning (includes `session_id` and `entity`)
-2. Entity events — Batched consolidated data with `sync_session_id` attached to each event
-3. `sync.complete` — Signals the sync has finished (items not included in the session can be marked as deleted)
+1. `sync.start`: Notifies Emporiqa that a sync is beginning (includes `session_id` and `entity`)
+2. Entity events: batched consolidated data with `sync_session_id` attached to each event
+3. `sync.complete`: Signals the sync has finished (items not included in the session can be marked as deleted)
 
 One session is created per entity type (e.g. one for products, one for pages):
 
@@ -716,8 +736,8 @@ The plugin provides Twig functions to embed the Emporiqa chat widget:
 
 This renders:
 
-1. A `<script>` block setting `window.emporiqaConfig` with `language`, `currency`, `channel`, `authenticated`, and `cartEnabled` — used by the cart handler JS
-2. `emporiqa-cart.js` — Registers `window.EmporiqaCartHandler` for in-chat cart operations
+1. A `<script>` block setting `window.emporiqaConfig` with `language`, `currency`, `channel`, `authenticated`, and `cartEnabled`: used by the cart handler JS
+2. `emporiqa-cart.js`: Registers `window.EmporiqaCartHandler` for in-chat cart operations
 3. The widget embed `<script>` tag with all parameters (store ID, language, currency, channel, and signed user token) in the URL
 
 The `window.emporiqaConfig` for the cart handler:
@@ -733,17 +753,17 @@ window.emporiqaConfig = {
 }
 ```
 
-- `**language**` — Full Sylius locale code from the current request (e.g., `en_US`, `de_DE`). Also sent as `X-Locale` header on cart API calls for locale-aware checkout URLs.
-- `**currency**` — Resolved from the user's selected currency (`CurrencyContextInterface`), falling back to the channel's base currency.
-- `**channel**` — The current Sylius channel code (e.g., `default`, `B2B`)
-- `**authenticated**` — Boolean flag indicating login state
+- `**language**`: Full Sylius locale code from the current request (e.g., `en_US`, `de_DE`). Also sent as `X-Locale` header on cart API calls for locale-aware checkout URLs.
+- `**currency**`: Resolved from the user's selected currency (`CurrencyContextInterface`), falling back to the channel's base currency.
+- `**channel**`: The current Sylius channel code (e.g., `default`, `B2B`)
+- `**authenticated**`: Boolean flag indicating login state
 
-The widget embed URL includes a signed `user_id` parameter for authenticated users — an HMAC-SHA256 signed token containing the user identifier. The token is deterministic (no timestamp) so it's safe for page caching. Anonymous pages contain no user-specific data (safe for Varnish/CDN). Authenticated pages are served with `Cache-Control: private` by Symfony.
+The widget embed URL includes a signed `user_id` parameter for authenticated users: an HMAC-SHA256 signed token containing the user identifier. The token is deterministic (no timestamp) so it's safe for page caching. Anonymous pages contain no user-specific data (safe for Varnish/CDN). Authenticated pages are served with `Cache-Control: private` by Symfony.
 
 ### Simple Embed (Without Cart)
 
 ```twig
-{# Simple inline script — no cart support #}
+{# Simple inline script, no cart support #}
 {{ emporiqa_widget() }}
 
 {# Get just the store ID #}
@@ -798,7 +818,7 @@ Listen to these Symfony events for fine-grained control:
 | `emporiqa.order_tracking`   | `OrderTrackingEvent::NAME`  | Before order tracking response is returned | Modify order data, add custom fields     |
 
 
-Example — modify product data before sending:
+Example: modify product data before sending:
 
 ```php
 use Emporiqa\SyliusPlugin\Event\PostFormatEvent;
@@ -821,7 +841,7 @@ class CustomProductDataListener
 }
 ```
 
-Example — block cart operations for specific roles:
+Example: block cart operations for specific roles:
 
 ```php
 use Emporiqa\SyliusPlugin\Event\CartOperationEvent;
@@ -956,10 +976,10 @@ bin/console emporiqa:test-connection -v
 
 ### Visual Search Not Returning Matches
 
-1. Confirm the uploaded image is JPEG, PNG, WebP, or GIF — other formats are rejected at upload
+1. Confirm the uploaded image is JPEG, PNG, WebP, or GIF. Other formats are rejected at upload
 2. Max upload size is 5 MB; larger files are rejected
 3. Check the browser console for upload errors (CORS, network)
-4. If matches are weak, verify your products actually sync with images — the chatbot describes the photo and searches by that description, so catalog image coverage and descriptive product names matter
+4. If matches are weak, verify your products actually sync with images. The chatbot describes the photo and searches by that description, so catalog image coverage and descriptive product names matter
 
 ### Cache Issues
 
@@ -971,7 +991,7 @@ bin/console cache:clear
 
 ## Pricing
 
-The plugin is free. Emporiqa is pay-as-you-go: $0.25 per conversation, with a $25 signup credit (about 100 free conversations) auto-applied at signup. No card required. Spend is capped at $59/month by default, and you can adjust the cap any time. The signup credit doesn't expire while your store is active. Catalogs over 30,000 products use a custom Enterprise plan. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
+The plugin is free. Emporiqa is Pay-as-you-go: $0/month base + $0.25/conversation. New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. After the credit, the monthly cap defaults to $59 and is customer-adjustable from the billing dashboard. Enterprise option for catalogs over 30,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
 
 ## Support
 

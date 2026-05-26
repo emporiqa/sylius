@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Service;
 
+use Emporiqa\SyliusPlugin\Event\MinOrderQuantityEvent;
 use Emporiqa\SyliusPlugin\Trait\TranslationHelperTrait;
 use Psr\Log\LoggerInterface;
 use Sylius\Component\Core\Model\ChannelInterface;
@@ -12,6 +13,7 @@ use Sylius\Component\Core\Model\ProductVariantInterface;
 use Sylius\Component\Taxonomy\Model\TaxonInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RouterInterface;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 class ProductFormatter implements ProductFormatterInterface
 {
@@ -28,6 +30,8 @@ class ProductFormatter implements ProductFormatterInterface
         private string $brandAttributeCode = 'brand',
         private string $mediaBasePath = '/media/image/',
         private ?LoggerInterface $logger = null,
+        private string $minOrderQuantityAttribute = 'min_order_qty',
+        private ?EventDispatcherInterface $eventDispatcher = null,
     ) {}
 
     public function format(ProductInterface $product): array
@@ -107,6 +111,7 @@ class ProductFormatter implements ProductFormatterInterface
         $stockQuantities = [];
         $images = [];
         $attributes = [];
+        $minOrderQuantities = [];
 
         foreach ($product->getChannels() as $channel) {
             $empChannelKey = $this->resolveChannelKey($channel);
@@ -136,6 +141,7 @@ class ProductFormatter implements ProductFormatterInterface
             $availabilityStatuses[$empChannelKey] = $this->getAvailabilityStatus($product, $variant);
             $stockQuantities[$empChannelKey] = $this->getStockQuantity($variant);
             $images[$empChannelKey] = $this->getProductImages($product);
+            $minOrderQuantities[$empChannelKey] = $this->getMinOrderQuantity($product, $empChannelKey);
         }
 
         return [
@@ -152,6 +158,7 @@ class ProductFormatter implements ProductFormatterInterface
                 'prices' => $prices,
                 'availability_statuses' => $availabilityStatuses,
                 'stock_quantities' => $stockQuantities,
+                'min_order_quantities' => $minOrderQuantities,
                 'images' => $images,
                 'attributes' => $attributes,
                 'parent_sku' => null,
@@ -177,6 +184,7 @@ class ProductFormatter implements ProductFormatterInterface
         $images = [];
         $attributes = [];
         $variationAttributes = [];
+        $minOrderQuantities = [];
 
         foreach ($product->getChannels() as $channel) {
             $empChannelKey = $this->resolveChannelKey($channel);
@@ -207,6 +215,10 @@ class ProductFormatter implements ProductFormatterInterface
             $availabilityStatuses[$empChannelKey] = $this->getAvailabilityStatus($product);
             $stockQuantities[$empChannelKey] = null;
             $images[$empChannelKey] = $this->getProductImages($product);
+            // Parent reflects the strictest constraint across its variants —
+            // mirrors the WooCommerce variable-product pattern. Variant-level
+            // overrides come through formatVariant().
+            $minOrderQuantities[$empChannelKey] = $this->getMaxVariantMinOrderQuantity($product, $empChannelKey);
         }
 
         return [
@@ -223,6 +235,7 @@ class ProductFormatter implements ProductFormatterInterface
                 'prices' => $prices,
                 'availability_statuses' => $availabilityStatuses,
                 'stock_quantities' => $stockQuantities,
+                'min_order_quantities' => $minOrderQuantities,
                 'images' => $images,
                 'attributes' => $attributes,
                 'parent_sku' => null,
@@ -245,6 +258,7 @@ class ProductFormatter implements ProductFormatterInterface
         $stockQuantities = [];
         $images = [];
         $attributes = [];
+        $minOrderQuantities = [];
 
         foreach ($product->getChannels() as $channel) {
             $empChannelKey = $this->resolveChannelKey($channel);
@@ -281,6 +295,7 @@ class ProductFormatter implements ProductFormatterInterface
             $availabilityStatuses[$empChannelKey] = $this->getAvailabilityStatus($product, $variant);
             $stockQuantities[$empChannelKey] = $this->getStockQuantity($variant);
             $images[$empChannelKey] = $this->getProductImages($product);
+            $minOrderQuantities[$empChannelKey] = $this->getMinOrderQuantity($variant, $empChannelKey);
         }
 
         return [
@@ -297,6 +312,7 @@ class ProductFormatter implements ProductFormatterInterface
                 'prices' => $prices,
                 'availability_statuses' => $availabilityStatuses,
                 'stock_quantities' => $stockQuantities,
+                'min_order_quantities' => $minOrderQuantities,
                 'images' => $images,
                 'attributes' => $attributes,
                 'parent_sku' => $product->getCode() ?? '',
@@ -552,6 +568,84 @@ class ProductFormatter implements ProductFormatterInterface
         }
 
         return $attributes;
+    }
+
+    /**
+     * Resolve the min-order-quantity for a product / variant on a given
+     * channel. Sylius core has no native field for this, so we source it from
+     * the configured product attribute (default: `min_order_qty`). For
+     * variants we read the parent product's attribute — Sylius doesn't model
+     * per-variant attributes here. Listeners on MinOrderQuantityEvent can
+     * override the resolved value (e.g. B2B per-customer rules).
+     *
+     * @param ProductInterface|ProductVariantInterface $entity
+     */
+    private function getMinOrderQuantity(object $entity, string $channelKey): int
+    {
+        if ($entity instanceof ProductVariantInterface) {
+            $product = $entity->getProduct();
+        } elseif ($entity instanceof ProductInterface) {
+            $product = $entity;
+        } else {
+            return 1;
+        }
+
+        $quantity = 1;
+        if ($product !== null) {
+            $resolved = $this->readMinOrderQuantityFromAttributes($product);
+            if ($resolved !== null) {
+                $quantity = $resolved;
+            }
+        }
+
+        if ($this->eventDispatcher !== null) {
+            $event = new MinOrderQuantityEvent($quantity, $entity, $channelKey);
+            $this->eventDispatcher->dispatch($event, MinOrderQuantityEvent::NAME);
+            $quantity = $event->getQuantity();
+        }
+
+        return max(1, $quantity);
+    }
+
+    private function getMaxVariantMinOrderQuantity(ProductInterface $product, string $channelKey): int
+    {
+        $max = 1;
+        foreach ($product->getVariants() as $variant) {
+            $value = $this->getMinOrderQuantity($variant, $channelKey);
+            if ($value > $max) {
+                $max = $value;
+            }
+        }
+
+        return $max;
+    }
+
+    private function readMinOrderQuantityFromAttributes(ProductInterface $product): ?int
+    {
+        $targetCode = strtolower($this->minOrderQuantityAttribute);
+
+        foreach ($product->getAttributes() as $attributeValue) {
+            $code = strtolower($attributeValue->getAttribute()?->getCode() ?? '');
+            if ($code !== $targetCode) {
+                continue;
+            }
+
+            $value = $attributeValue->getValue();
+
+            if (is_int($value)) {
+                return $value;
+            }
+            if (is_numeric($value)) {
+                return (int) $value;
+            }
+            if (is_string($value) && $value !== '' && is_numeric(trim($value))) {
+                return (int) trim($value);
+            }
+
+            return null;
+        }
+
+        return null;
     }
 
     private function generateProductUrl(ProductInterface $product, string $locale): string

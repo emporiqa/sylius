@@ -59,7 +59,7 @@ class TestConnectionCommand extends Command
         $result = $this->webhookSender->sendDryRun($events);
 
         if (!$result['success']) {
-            $this->renderError($io, $result);
+            $this->renderError($io, $output, $result);
             return Command::FAILURE;
         }
 
@@ -96,26 +96,32 @@ class TestConnectionCommand extends Command
         return $simple;
     }
 
-    private function renderError(SymfonyStyle $io, array $result): void
+    private function renderError(SymfonyStyle $io, OutputInterface $output, array $result): void
     {
         $statusCode = $result['status_code'] ?? null;
+        $friendly = $this->webhookSender->buildFriendlyError($result);
 
-        if ($statusCode === 401) {
-            $io->error('Authentication failed (401). Check your webhook_secret configuration.');
-        } elseif ($statusCode === 400) {
-            $io->error('Validation failed (400). The payload format is invalid.');
-            $response = $result['response'] ?? null;
-            if (is_array($response)) {
-                $io->text(json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-            }
-        } elseif (isset($result['error'])) {
-            $io->error(sprintf('Connection failed: %s', $result['error']));
+        if ($statusCode !== null) {
+            $io->error(sprintf('Connection failed (HTTP %d): %s', $statusCode, $friendly));
         } else {
-            $io->error(sprintf('Request failed with status %s.', $statusCode ?? 'unknown'));
+            $io->error(sprintf('Connection failed: %s', $friendly));
         }
 
         if (isset($result['url'])) {
             $io->text(sprintf('URL: %s', $result['url']));
+        }
+
+        // Raw response only on -v / --verbose, otherwise the friendly message
+        // is the whole signal.
+        if ($output->isVerbose()) {
+            $response = $result['response'] ?? null;
+            if (is_array($response)) {
+                $io->section('Raw response');
+                $io->text(json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            } elseif (is_string($response) && $response !== '') {
+                $io->section('Raw response');
+                $io->text($response);
+            }
         }
     }
 

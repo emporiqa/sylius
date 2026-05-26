@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\Service;
 
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Console\ConsoleEvents;
+use Symfony\Component\Console\Event\ConsoleTerminateEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
 
@@ -15,6 +17,10 @@ use Symfony\Component\HttpKernel\KernelEvents;
  * Deduplicates events by identification_number so that multiple variant
  * updates in one request only produce a single parent sync.
  * Preserves 'created' type over 'updated' when deduplicating.
+ *
+ * Console commands normally bypass the queue (they call sendBatch directly
+ * for synchronous feedback), but if any code path queues events during a
+ * console run we still flush on console.terminate as a safety net.
  */
 class WebhookEventQueue implements EventSubscriberInterface
 {
@@ -33,6 +39,7 @@ class WebhookEventQueue implements EventSubscriberInterface
     {
         return [
             KernelEvents::TERMINATE => ['flush', -100],
+            ConsoleEvents::TERMINATE => ['flushOnConsoleTerminate', -100],
         ];
     }
 
@@ -85,6 +92,16 @@ class WebhookEventQueue implements EventSubscriberInterface
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Defensive flush triggered on console.terminate. Mirrors the HTTP
+     * kernel.terminate hook so any events queued during a CLI run (e.g. an
+     * import script that triggers Doctrine listeners) still reach Emporiqa.
+     */
+    public function flushOnConsoleTerminate(ConsoleTerminateEvent $event): void
+    {
+        $this->flush();
     }
 
     public function hasPending(): bool

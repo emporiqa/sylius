@@ -357,8 +357,17 @@ class CartController
 
     private function validateCsrf(Request $request): ?JsonResponse
     {
+        // Fail closed: if the CSRF token manager isn't wired (stripped-down
+        // installs, mis-wired DI, tests that forgot to provide it) we must
+        // reject the cart operation rather than silently bypass validation.
+        // The widget always posts an X-CSRF-Token issued by the host store,
+        // so a missing manager indicates a configuration issue and any
+        // unsigned cart write should not be honored.
         if (!$this->csrfTokenManager) {
-            return null;
+            return new JsonResponse(
+                ['success' => false, 'error' => 'CSRF protection unavailable'],
+                Response::HTTP_FORBIDDEN,
+            );
         }
 
         $token = $request->headers->get('X-CSRF-Token', '');

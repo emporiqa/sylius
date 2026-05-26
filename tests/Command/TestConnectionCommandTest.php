@@ -175,12 +175,13 @@ class TestConnectionCommandTest extends TestCase
             'url' => 'https://emporiqa.com/webhooks/sync/store-1/?dry_run=true',
             'response' => ['error' => 'Invalid signature'],
         ]);
+        $this->webhookSender->method('buildFriendlyError')->willReturn('Invalid signature');
 
         $this->commandTester->execute([]);
 
         $this->assertSame(1, $this->commandTester->getStatusCode());
         $this->assertStringContainsString('401', $this->commandTester->getDisplay());
-        $this->assertStringContainsString('webhook_secret', $this->commandTester->getDisplay());
+        $this->assertStringContainsString('Invalid signature', $this->commandTester->getDisplay());
     }
 
     public function testValidationFailure(): void
@@ -197,11 +198,13 @@ class TestConnectionCommandTest extends TestCase
             'url' => 'https://emporiqa.com/webhooks/sync/store-1/?dry_run=true',
             'response' => ['error' => 'Missing required field: names'],
         ]);
+        $this->webhookSender->method('buildFriendlyError')->willReturn('Missing required field: names');
 
         $this->commandTester->execute([]);
 
         $this->assertSame(1, $this->commandTester->getStatusCode());
         $this->assertStringContainsString('400', $this->commandTester->getDisplay());
+        $this->assertStringContainsString('Missing required field: names', $this->commandTester->getDisplay());
     }
 
     public function testNetworkFailure(): void
@@ -217,6 +220,7 @@ class TestConnectionCommandTest extends TestCase
             'error' => 'Connection refused',
             'url' => 'https://emporiqa.com/webhooks/sync/store-1/?dry_run=true',
         ]);
+        $this->webhookSender->method('buildFriendlyError')->willReturn('Connection refused');
 
         $this->commandTester->execute([]);
 

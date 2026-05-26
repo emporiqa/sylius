@@ -88,6 +88,8 @@ abstract class AbstractSyncCommand extends Command
         $eventsBatch = [];
         $successCount = 0;
         $errorCount = 0;
+        /** @var array<string, true> $uniqueErrors */
+        $uniqueErrors = [];
 
         foreach ($this->fetchEntities() as $entity) {
             try {
@@ -105,8 +107,12 @@ abstract class AbstractSyncCommand extends Command
             }
 
             if ($sessionId) {
+                // Django webhook schema accepts `session_id` only — the older
+                // `sync_session_id` key was silently rejected and per-entity
+                // events never landed in the sync session. Must match the
+                // key used in sync.start / sync.complete above.
                 foreach ($events as &$event) {
-                    $event['data']['sync_session_id'] = $sessionId;
+                    $event['data']['session_id'] = $sessionId;
                 }
                 unset($event);
             }
@@ -114,15 +120,7 @@ abstract class AbstractSyncCommand extends Command
             array_push($eventsBatch, ...$events);
 
             if (count($eventsBatch) >= $batchSize) {
-                if (!$dryRun) {
-                    if ($this->webhookSender->sendBatch($eventsBatch)) {
-                        $successCount += count($eventsBatch);
-                    } else {
-                        $errorCount += count($eventsBatch);
-                    }
-                } else {
-                    $successCount += count($eventsBatch);
-                }
+                $this->dispatchBatch($eventsBatch, $dryRun, $io, $successCount, $errorCount, $uniqueErrors);
                 $eventsBatch = [];
             }
 
@@ -130,15 +128,7 @@ abstract class AbstractSyncCommand extends Command
         }
 
         if (!empty($eventsBatch)) {
-            if (!$dryRun) {
-                if ($this->webhookSender->sendBatch($eventsBatch)) {
-                    $successCount += count($eventsBatch);
-                } else {
-                    $errorCount += count($eventsBatch);
-                }
-            } else {
-                $successCount += count($eventsBatch);
-            }
+            $this->dispatchBatch($eventsBatch, $dryRun, $io, $successCount, $errorCount, $uniqueErrors);
         }
 
         $progressBar->finish();
@@ -150,6 +140,12 @@ abstract class AbstractSyncCommand extends Command
 
         $io->text(sprintf('  %d events sent, %d errors', $successCount, $errorCount));
 
+        if (!empty($uniqueErrors)) {
+            $io->newLine();
+            $io->section('Errors reported by Emporiqa');
+            $io->listing(array_keys($uniqueErrors));
+        }
+
         $io->newLine();
         if ($errorCount === 0) {
             $io->success(sprintf('%s sync completed successfully!', $entityLabel));
@@ -160,6 +156,41 @@ abstract class AbstractSyncCommand extends Command
         $io->warning(sprintf('%s sync completed with some errors', $entityLabel));
         $io->note('Successfully synced items will be processed and enhanced by Emporiqa. This may take a few minutes. You can check the results in the Products/Pages list in your Emporiqa dashboard.');
         return Command::FAILURE;
+    }
+
+    /**
+     * Send a batch, update counters, and surface the friendly error to the
+     * console + final summary on failure.
+     *
+     * @param array<array{type: string, data: array}> $eventsBatch
+     * @param array<string, true>                     $uniqueErrors
+     */
+    private function dispatchBatch(
+        array $eventsBatch,
+        bool $dryRun,
+        SymfonyStyle $io,
+        int &$successCount,
+        int &$errorCount,
+        array &$uniqueErrors,
+    ): void {
+        if ($dryRun) {
+            $successCount += count($eventsBatch);
+            return;
+        }
+
+        if ($this->webhookSender->sendBatch($eventsBatch)) {
+            $successCount += count($eventsBatch);
+            return;
+        }
+
+        $errorCount += count($eventsBatch);
+
+        $message = $this->webhookSender->getLastError();
+        if ($message !== null && $message !== '') {
+            $io->newLine();
+            $io->warning(sprintf('Batch failed: %s', $message));
+            $uniqueErrors[$message] = true;
+        }
     }
 
     private function startSyncSession(string $entityName, SymfonyStyle $io): ?string
