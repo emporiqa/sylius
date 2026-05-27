@@ -136,6 +136,7 @@ bin/console cache:clear
 | `base_url`               | string   | `''`                 | Base URL for image paths in CLI context (e.g. `https://myshop.com`)          |
 | `media_base_path`        | string   | `'/media/image/'`    | Base path for product images. Customize for CDN or non-default media storage |
 | `brand_attribute_code`   | string   | `'brand'`            | Product attribute code used for brand/manufacturer data                      |
+| `min_order_quantity_attribute` | string | `'min_order_qty'` | Product attribute code holding the minimum order quantity. Stores without this attribute defined see a default minimum of 1. Listeners on `MinOrderQuantityEvent` may override the value. |
 | `enabled_languages`      | string[] | `['en_US', 'de_DE']` | Sylius locale codes to sync                                                  |
 | `sync.products`          | bool     | `true`               | Enable automatic product synchronization                                     |
 | `sync.pages`             | bool     | `true`               | Enable automatic page synchronization                                        |
@@ -153,7 +154,8 @@ emporiqa:
     webhook_secret: '%env(EMPORIQA_WEBHOOK_SECRET)%'
     base_url: 'https://myshop.com'       # optional, for CLI image URLs
     media_base_path: '/media/image/'     # optional, customize for CDN/S3/LiipImagine
-    brand_attribute_code: 'brand'         # optional, product attribute for brand
+    brand_attribute_code: 'brand'        # optional, product attribute for brand
+    min_order_quantity_attribute: 'min_order_qty'  # optional, attribute holding the min order quantity
     enabled_languages: ['en_US', 'de_DE']
     sync:
         products: true
@@ -268,6 +270,10 @@ Each product or variant is sent as a single consolidated event containing all ch
     "stock_quantities": {
       "": 25,
       "b2b": 25
+    },
+    "min_order_quantities": {
+      "": 1,
+      "b2b": 6
     },
     "images": {
       "": ["https://store.com/media/image/product.jpg"]
@@ -600,7 +606,7 @@ The `emporiqa-cart.js` script registers `window.EmporiqaCartHandler` which the e
 - **ID extraction**: Strips prefixes from IDs (`"variation-456"` -> `456`)
 - **Response normalization**: Returns consistent `{success, error, checkoutUrl, cart}` objects
 
-CSRF protection is enforced for authenticated users via the `X-CSRF-Token` header. Anonymous users skip CSRF validation (no session to hijack). Fetch a CSRF token from `GET /emporiqa/api/csrf-token` and include it in mutation requests.
+CSRF protection is enforced on every cart-write via the `X-CSRF-Token` header. Fetch a token from `GET /emporiqa/api/csrf-token` and include it in mutation requests. If the framework CSRF token manager is not wired in the container, the controller fails closed with `403 CSRF protection unavailable` (as of v1.6.3 — earlier versions silently bypassed validation in that edge case).
 
 ### Disabling Cart
 
@@ -645,7 +651,7 @@ The subscriber works with both state machine engines:
 }
 ```
 
-The `emporiqa_sid` cookie value is validated (alphanumeric + `_-.`, max 256 chars) and sanitized before inclusion. Webhook failures are logged but never block the checkout flow.
+The `emporiqa_sid` cookie value is validated (alphanumeric + `_-.`, max 256 chars) and sanitized before inclusion. Webhook failures are logged but never block the checkout flow. Orders with `paymentState === 'cancelled'` are skipped (no conversion to attribute), and unit prices are handled null-safe so partial order data never breaks the subscriber.
 
 ## Keeping your catalog in sync
 
@@ -694,6 +700,8 @@ Validates the webhook connection by sending a real product via dry run (`?dry_ru
 ```bash
 bin/console emporiqa:test-connection
 ```
+
+All sync and test commands surface the actual error reason from the Emporiqa API ("Invalid signature", validation errors, throttle hints) rather than a generic "Request failed with status N". Repeated batch failures during sync are deduplicated and listed in the final command summary. Available on `WebhookSenderInterface` as `getLastError(): ?string` and `buildFriendlyError(array $result): string` for custom transports.
 
 ### Command Options
 
@@ -815,6 +823,7 @@ Listen to these Symfony events for fine-grained control:
 | `emporiqa.post_format`      | `PostFormatEvent::NAME`     | After product/page is formatted            | Modify formatted data, add custom fields |
 | `emporiqa.pre_webhook_send` | `PreWebhookSendEvent::NAME` | Before batch is sent to Emporiqa           | Filter or modify events before delivery  |
 | `emporiqa.cart_operation`   | `CartOperationEvent::NAME`  | Before cart add/update/remove/clear        | Cancel operation, enforce business rules |
+| `emporiqa.min_order_quantity` | `MinOrderQuantityEvent::NAME` | After the bundle reads the min order qty from the configured product attribute | Override the per-channel minimum (B2B rules, per-customer rules, external system lookup) |
 | `emporiqa.order_tracking`   | `OrderTrackingEvent::NAME`  | Before order tracking response is returned | Modify order data, add custom fields     |
 
 
@@ -880,6 +889,7 @@ emporiqa/sylius-plugin/
 │   │   └── PageInterface.php               # Page entity contract
 │   ├── Event/
 │   │   ├── CartOperationEvent.php          # Dispatched before cart operations
+│   │   ├── MinOrderQuantityEvent.php       # Dispatched while computing per-channel min order qty
 │   │   ├── OrderTrackingEvent.php          # Dispatched before order tracking response
 │   │   ├── PostFormatEvent.php             # Dispatched after entity formatting
 │   │   ├── PreSyncEvent.php                # Dispatched before entity sync
@@ -899,6 +909,7 @@ emporiqa/sylius-plugin/
 │   │   ├── OrderProvider.php               # Order lookup via Sylius
 │   │   ├── OrderProviderInterface.php
 │   │   ├── CurrencyHelper.php              # Currency-aware price conversion
+│   │   ├── ChannelMappingResolver.php      # Maps Sylius channel codes to Emporiqa channel keys
 │   │   └── UserTokenGenerator.php          # Signed user token generation
 │   ├── Controller/
 │   │   ├── CartController.php              # Cart REST API (6 endpoints)
@@ -949,9 +960,18 @@ emporiqa/sylius-plugin/
 bin/console emporiqa:test-connection -v
 ```
 
-1. Verify your Store ID in the Emporiqa dashboard
-2. Check that your server can make outbound HTTPS requests
-3. Review Symfony logs for detailed error messages
+1. Read the command output. As of v1.6.3 it prints the actual reason from Emporiqa ("Invalid signature", validation errors, throttle hints) rather than just an HTTP code.
+2. Verify your Store ID, webhook URL, and connection secret in the Emporiqa dashboard
+3. Check that your server can make outbound HTTPS requests
+4. Review Symfony logs for detailed error messages
+
+### Cart Operations Fail With 403 "CSRF protection unavailable"
+
+The cart controller fails closed when Symfony's CSRF token manager isn't wired in the container.
+
+1. Enable `framework.csrf_protection: true` (or install `symfony/security-csrf` if your install stripped it)
+2. Clear the cache: `bin/console cache:clear`
+3. If you ship a custom DI configuration, verify `security.csrf.token_manager` resolves to a real service
 
 ### Products Not Syncing
 

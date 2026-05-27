@@ -107,12 +107,14 @@ abstract class AbstractSyncCommand extends Command
             }
 
             if ($sessionId) {
-                // Django webhook schema accepts `session_id` only — the older
-                // `sync_session_id` key was silently rejected and per-entity
-                // events never landed in the sync session. Must match the
-                // key used in sync.start / sync.complete above.
+                // Per-entity events go into ProductEventData / PageEventData,
+                // both of which expect `sync_session_id` (see
+                // core/schemas/webhooks.py). Only the envelope events
+                // sync.start / sync.complete use the bare `session_id` key.
+                // Don't conflate them — the Django pydantic models are
+                // separate schemas with deliberately different field names.
                 foreach ($events as &$event) {
-                    $event['data']['session_id'] = $sessionId;
+                    $event['data']['sync_session_id'] = $sessionId;
                 }
                 unset($event);
             }

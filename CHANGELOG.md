@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [v1.6.4] - 2026-05-27
+
+### Fixed
+- **Per-entity sync events lost their session reference.** v1.6.3
+  rewrote `AbstractSyncCommand` to set `data.session_id` on every
+  `product.*` / `page.*` event, on the (incorrect) assumption that the
+  Django schema only accepted `session_id`. In fact the per-entity
+  schemas (`ProductEventData`, `PageEventData` in
+  `core/schemas/webhooks.py`) deliberately use `sync_session_id`;
+  only `sync.start` / `sync.complete` use `session_id`. The wrong
+  field name caused per-entity events from `bin/console
+  emporiqa:sync:products` / `:sync:pages` to drop their session tag
+  silently. Reverted to `sync_session_id` for per-entity events.
+  All other Emporiqa integrations (WooCommerce, Drupal, PrestaShop,
+  Magento) were already using the right field name. No upgrade
+  action needed.
+
+### Documentation
+- README: documented the `min_order_quantity_attribute` config node,
+  the `MinOrderQuantityEvent` extensibility hook, the v1.6.3 CSRF
+  fail-closed behavior, and the v1.6.3 friendly-error console output.
+  Added a Troubleshooting entry for the "Cart operations fail with
+  403 'CSRF protection unavailable'" case.
+- `composer.json`: bumped `branch-alias.dev-main` to `1.7-dev`
+  (was three minor versions behind at `1.5-dev`).
+
 ## [v1.6.3] - 2026-05-26
 
 ### Added
@@ -32,19 +58,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   flush at command shutdown instead of silently dropping them.
 
 ### Fixed
-- **`session_id` key mismatch on per-entity sync events.** Per-entity
-  events emitted by `bin/console emporiqa:sync:products` /
-  `:sync:pages` were using the legacy `sync_session_id` key while the
-  enveloping `sync.start` / `sync.complete` used `session_id`. The
-  Django webhook schema only accepts `session_id`, so per-entity events
-  were silently rejected and never attached to the session. Sync now
-  works as documented.
 - **CSRF bypass for anonymous cart operations.** When
   `security.csrf.token_manager` was not wired (stripped-down installs,
   mis-wired DI, partial test fixtures), `CartController::validateCsrf()`
   returned no error and let the request through. Now fails closed with
   `403 CSRF protection unavailable`. Any cart-write must carry a valid
   `X-CSRF-Token` issued by the host store.
+- **`order.completed` webhooks fired on cancelled-payment orders.**
+  `OrderCompleteSubscriber` now skips orders whose
+  `paymentState === 'cancelled'` so a back-office cancellation that
+  still reaches the checkout completion transition no longer registers
+  as a conversion. Unit price reads are now null-safe, so partial
+  order data can't break the subscriber.
 
 ### Migration notes
 - If you've extended `WebhookSenderInterface` with a custom
