@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Tests
+- **`CartControllerTest` updated for v1.6.3's CSRF fail-closed behavior.**
+  All 21 cart write-operation tests (`add`/`update`/`remove`/`clear`)
+  were instantiating the controller with `csrfTokenManager = null`,
+  which since v1.6.3 returns `403 CSRF protection unavailable` before
+  business logic runs. They now share a permissive CSRF mock wired in
+  `setUp()`, so each test exercises the behavior it claims to test.
+  The dedicated CSRF tests
+  (`testCsrfValidationRejectsInvalidToken`,
+  `testCsrfValidationEnforcedForAnonymousUser`,
+  `testGetCsrfTokenReturnsEmptyWhenNoCsrfManager`) continue to build
+  controllers with stricter setups. No production code change.
+
 ## [v1.6.4] - 2026-05-27
 
 ### Fixed

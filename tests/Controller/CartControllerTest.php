@@ -33,6 +33,7 @@ class CartControllerTest extends TestCase
     private ProductVariantRepositoryInterface $variantRepository;
     private EntityManagerInterface $entityManager;
     private RouterInterface $router;
+    private CsrfTokenManagerInterface $csrfTokenManager;
     private CartController $controller;
 
     protected function setUp(): void
@@ -50,6 +51,12 @@ class CartControllerTest extends TestCase
         $requestContext->setScheme('https');
         $this->router->method('getContext')->willReturn($requestContext);
 
+        // Permissive CSRF manager: business-logic tests don't exercise the CSRF
+        // path. Tests that need stricter CSRF behavior build their own controller.
+        $this->csrfTokenManager = $this->createMock(CsrfTokenManagerInterface::class);
+        $this->csrfTokenManager->method('isTokenValid')->willReturn(true);
+        $this->csrfTokenManager->method('getToken')->willReturn(new CsrfToken('emporiqa_cart', 'test-token'));
+
         $this->controller = new CartController(
             $this->cartContext,
             $this->orderModifier,
@@ -58,6 +65,8 @@ class CartControllerTest extends TestCase
             $this->variantRepository,
             $this->entityManager,
             $this->router,
+            null,
+            $this->csrfTokenManager,
         );
     }
 
@@ -363,7 +372,17 @@ class CartControllerTest extends TestCase
 
     public function testGetCsrfTokenReturnsEmptyWhenNoCsrfManager(): void
     {
-        $response = $this->controller->getCsrfToken();
+        $controller = new CartController(
+            $this->cartContext,
+            $this->orderModifier,
+            $this->orderItemQuantityModifier,
+            $this->orderItemFactory,
+            $this->variantRepository,
+            $this->entityManager,
+            $this->router,
+        );
+
+        $response = $controller->getCsrfToken();
 
         $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
         $data = json_decode($response->getContent(), true);
@@ -612,7 +631,7 @@ class CartControllerTest extends TestCase
             $this->entityManager,
             $this->router,
             null,
-            null,
+            $this->csrfTokenManager,
             $dispatcher,
         );
 
