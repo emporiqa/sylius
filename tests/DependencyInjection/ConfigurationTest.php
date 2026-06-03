@@ -41,6 +41,7 @@ class ConfigurationTest extends TestCase
         $this->assertSame(['en_US', 'de_DE'], $config['enabled_languages']);
         $this->assertTrue($config['sync']['products']);
         $this->assertTrue($config['sync']['pages']);
+        $this->assertTrue($config['sync']['stock']);
         $this->assertSame([], $config['page_entity_classes']);
         $this->assertTrue($config['order_tracking']['enabled']);
         $this->assertTrue($config['cart']['enabled']);
@@ -113,6 +114,17 @@ class ConfigurationTest extends TestCase
 
         $this->assertTrue($config['sync']['products']);
         $this->assertTrue($config['sync']['pages']);
+        $this->assertTrue($config['sync']['stock']);
+    }
+
+    public function testStockSyncCanBeDisabled(): void
+    {
+        $config = $this->processor->processConfiguration($this->configuration, [
+            array_merge(self::REQUIRED_CONFIG, ['sync' => ['stock' => false]]),
+        ]);
+
+        $this->assertFalse($config['sync']['stock']);
+        $this->assertTrue($config['sync']['products']);
     }
 
     public function testPageEntityClassesConfiguration(): void

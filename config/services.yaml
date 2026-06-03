@@ -28,6 +28,10 @@ services:
 
     Emporiqa\SyliusPlugin\Service\ProductFormatterInterface: '@Emporiqa\SyliusPlugin\Service\ProductFormatter'
 
+    Emporiqa\SyliusPlugin\Service\VariantStockFormatter: ~
+
+    Emporiqa\SyliusPlugin\Service\VariantStockFormatterInterface: '@Emporiqa\SyliusPlugin\Service\VariantStockFormatter'
+
     Emporiqa\SyliusPlugin\Service\PageUrlResolver: ~
 
     Emporiqa\SyliusPlugin\Service\PageUrlResolverInterface: '@Emporiqa\SyliusPlugin\Service\PageUrlResolver'
@@ -45,6 +49,11 @@ services:
     Emporiqa\SyliusPlugin\EventSubscriber\ProductEventSubscriber:
         arguments:
             $syncEnabled: '%emporiqa.sync.products%'
+
+    Emporiqa\SyliusPlugin\EventListener\VariantStockDoctrineListener:
+        arguments:
+            $syncEnabled: '%emporiqa.sync.products%'
+            $stockSyncEnabled: '%emporiqa.sync.stock%'
 
     Emporiqa\SyliusPlugin\EventListener\PageDoctrineListener:
         arguments:

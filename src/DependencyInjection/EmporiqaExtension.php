@@ -33,6 +33,7 @@ class EmporiqaExtension extends Extension
         $container->setParameter('emporiqa.min_order_quantity_attribute', $config['min_order_quantity_attribute']);
         $container->setParameter('emporiqa.sync.products', $config['sync']['products']);
         $container->setParameter('emporiqa.sync.pages', $config['sync']['pages']);
+        $container->setParameter('emporiqa.sync.stock', $config['sync']['stock']);
         $container->setParameter('emporiqa.page_entity_classes', $config['page_entity_classes']);
         $container->setParameter('emporiqa.order_tracking.enabled', $config['order_tracking']['enabled']);
         $container->setParameter('emporiqa.cart.enabled', $config['cart']['enabled']);

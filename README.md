@@ -1,29 +1,12 @@
 # Emporiqa Sylius Plugin
 
-Integrates [Sylius](https://sylius.com) with the [Emporiqa](https://emporiqa.com?utm_source=gitlab&utm_medium=readme&utm_campaign=sylius_plugin) AI chatbot, an online salesperson that closes sales in your Sylius store. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks.
+Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=gitlab&utm_medium=readme&utm_campaign=sylius_plugin), an AI chat assistant that acts as an online salesperson on your storefront. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks.
 
-A shopper types "organic face cream for sensitive skin, under 30" into your store. Your search returns every cream you sell. The shopper wanted three specific things and got none of them filtered.
-
-The chatbot acts like an online salesperson. Shoppers describe what they need (or upload a photo of something they like), it finds matching products from your catalog, handles objections, answers questions from your own pages, compares items, and walks them to cart and checkout.
+The chat assistant reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and drives cart and checkout through the plugin's APIs.
 
 [![Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](docs/images/product-search.jpg)](https://demo.emporiqa.com)
 
 Try it yourself on the [live demo store](https://demo.emporiqa.com).
-
-**What it does:**
-
-- Closes sales: handles objections like "too expensive" by suggesting alternatives from your catalog, instead of giving up
-- Searches your product catalog by what shoppers mean, not just keywords
-- Visual search: a shopper uploads a photo (something they saw on social, a style they like), the chatbot describes it and finds matching products in your catalog
-- Answers questions about shipping, returns, and payment from your store pages
-- Compares products side by side
-- Adds to cart and sends shoppers to checkout
-- Tracks which chats led to purchases (full conversion funnel with chat-attributed revenue)
-- Starts conversations automatically based on shopper behavior (time on page, pages visited, checkout page)
-- Rates shopper satisfaction after each conversation (thumbs up/down with aggregate scores)
-- Hands off to your team when it can't help
-- Works in 65+ languages
-- Unlimited team members on every plan, no per-seat fees
 
 ## Features
 
@@ -41,7 +24,7 @@ Try it yourself on the [live demo store](https://demo.emporiqa.com).
 - **Webhook Retry**: Automatic retry with exponential backoff for transient failures
 - **Fully Extensible**: Decorate any service interface, listen to events (`PostFormatEvent`, `CartOperationEvent`, `PreSyncEvent`, etc.)
 
-Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, Shopware, and any store via webhook API. Same platform, same dashboard, same salesperson.
+Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, Shopware, and any store via webhook API. One Emporiqa account and dashboard runs across all of them.
 
 ## Requirements
 
@@ -140,6 +123,7 @@ bin/console cache:clear
 | `enabled_languages`      | string[] | `['en_US', 'de_DE']` | Sylius locale codes to sync                                                  |
 | `sync.products`          | bool     | `true`               | Enable automatic product synchronization                                     |
 | `sync.pages`             | bool     | `true`               | Enable automatic page synchronization                                        |
+| `sync.stock`             | bool     | `true`               | Emit a lightweight `product.availability` event on inventory-only variant changes (e.g. order-driven stock decrements) instead of rebuilding the full product. Requires `sync.products`. |
 | `page_entity_classes`    | string[] | `[]`                 | FQCNs of page entities implementing `PageInterface`                          |
 | `order_tracking.enabled` | bool     | `true`               | Enable the order tracking API endpoint                                       |
 | `cart.enabled`           | bool     | `true`               | Enable cart API endpoints and order completion webhook                       |
@@ -160,6 +144,7 @@ emporiqa:
     sync:
         products: true
         pages: true
+        stock: true                      # optional, lightweight inventory-only events
     page_entity_classes:
         - App\Entity\StaticPage
         - App\Entity\BlogPost

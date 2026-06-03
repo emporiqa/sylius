@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [v1.7.0] - 2026-06-03
+
+### Fixed
+- **Availability events queued during async Messenger handling are now
+  flushed per message.** `WebhookEventQueue` only flushed on
+  `kernel.terminate` / `console.terminate`. When stock-affecting operations
+  are processed by a long-running `messenger:consume` worker, neither fires
+  per message, so queued `product.availability` events stacked up until the
+  worker stopped (or were lost if it was killed). The queue now subscribes
+  to `WorkerMessageHandledEvent` (flush after each handled message) and
+  `WorkerMessageFailedEvent` (discard pending events — the handler's Doctrine
+  transaction is rolled back, so the change never persisted). Hooks are
+  registered only when `symfony/messenger` is installed.
+- **`product.availability` inventory-only detection now tolerates Gedmo
+  audit fields.** Sylius's `ProductVariant` is Timestampable, so every
+  update writes `updatedAt` alongside the inventory field. The previous
+  `isInventoryOnlyChange()` required the changeset to contain *only*
+  `{onHand, onHold, tracked}`, so the production changeset
+  `{onHand, updatedAt}` was rejected and the lightweight event never fired
+  for real order-driven decrements. Detection is now: inventory-only iff at
+  least one inventory field changed AND every other changed field is a
+  neutral audit field (`updatedAt`, `createdAt`, `createdBy`, `updatedBy`).
+- **No double-emit on admin pure-stock saves.** In `ResourceController`
+  the Doctrine flush (`VariantStockDoctrineListener` →
+  `product.availability`) runs before the resource `post_update`
+  (`ProductEventSubscriber` → full product event), so the queue-time
+  `hasPendingFor()` guard could not see the not-yet-queued full event.
+  `WebhookEventQueue` now enforces full-event precedence for the same
+  `identification_number` regardless of queue order: a full product event
+  always supersedes a `product.availability` event, while an order-driven
+  decrement (no resource event) still emits the availability event.
+
 ## [v1.6.5] - 2026-05-27
 
 ### Tests
