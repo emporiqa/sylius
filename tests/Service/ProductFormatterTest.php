@@ -7,7 +7,10 @@ namespace Emporiqa\SyliusPlugin\Tests\Service;
 use Doctrine\Common\Collections\ArrayCollection;
 use Emporiqa\SyliusPlugin\Service\ChannelMappingResolver;
 use Emporiqa\SyliusPlugin\Service\ProductFormatter;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Sylius\Component\Attribute\Model\AttributeInterface;
+use Sylius\Component\Attribute\Model\AttributeValueInterface;
 use Sylius\Component\Core\Model\ChannelInterface;
 use Sylius\Component\Core\Model\ChannelPricingInterface;
 use Sylius\Component\Core\Model\ProductInterface;
@@ -60,6 +63,19 @@ class ProductFormatterTest extends TestCase
         return $channel;
     }
 
+    private function createAttributeValue(string $code, mixed $value): AttributeValueInterface
+    {
+        $attribute = $this->createMock(AttributeInterface::class);
+        $attribute->method('getCode')->willReturn($code);
+        $attribute->method('getTranslation')->willThrowException(new \RuntimeException('no translation'));
+
+        $attributeValue = $this->createMock(AttributeValueInterface::class);
+        $attributeValue->method('getAttribute')->willReturn($attribute);
+        $attributeValue->method('getValue')->willReturn($value);
+
+        return $attributeValue;
+    }
+
     public function testFormatSimpleProduct(): void
     {
         $translation = $this->createMock(ProductTranslationInterface::class);
@@ -104,6 +120,12 @@ class ProductFormatterTest extends TestCase
         $this->assertSame('A test product', $events[0]['data']['descriptions']['DEFAULT']['en_US']);
         $this->assertSame('available', $events[0]['data']['availability_statuses']['DEFAULT']);
         $this->assertFalse($events[0]['data']['is_parent']);
+
+        // New contract fields default sanely when no attributes are present.
+        $this->assertNull($events[0]['data']['max_order_quantities']['DEFAULT']);
+        $this->assertTrue($events[0]['data']['available_for_order']);
+        $this->assertNull($events[0]['data']['condition']);
+        $this->assertFalse($events[0]['data']['is_virtual']);
 
         $prices = $events[0]['data']['prices']['DEFAULT'];
         $this->assertCount(1, $prices);
@@ -175,6 +197,138 @@ class ProductFormatterTest extends TestCase
         $this->assertSame('variation-10', $events[1]['data']['identification_number']);
         $this->assertSame('TSHIRT', $events[1]['data']['parent_sku']);
         $this->assertFalse($events[1]['data']['is_parent']);
+    }
+
+    public function testParentOfAllOutOfStockVariantsIsOutOfStock(): void
+    {
+        // Regression: formatParentProduct previously called
+        // getAvailabilityStatus($product) with no variant, so an enabled
+        // configurable product whose variants are all out of stock reported
+        // the PARENT as 'available'. The backend trusts the parent point's
+        // stored availability for search filtering, so it surfaced sold-out
+        // products. The parent must now aggregate across variants.
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('T-Shirt');
+        $translation->method('getDescription')->willReturn('A t-shirt');
+        $translation->method('getSlug')->willReturn('t-shirt');
+
+        $channelPricing = $this->createMock(ChannelPricingInterface::class);
+        $channelPricing->method('getPrice')->willReturn(2999);
+        $channelPricing->method('getOriginalPrice')->willReturn(null);
+
+        $channel = $this->createChannel();
+
+        // Both variants tracked with zero net stock → out of stock.
+        $variant1 = $this->createMock(ProductVariantInterface::class);
+        $variant1->method('getId')->willReturn(10);
+        $variant1->method('getCode')->willReturn('TSHIRT-S');
+        $variant1->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant1->method('isEnabled')->willReturn(true);
+        $variant1->method('isTracked')->willReturn(true);
+        $variant1->method('getOnHand')->willReturn(0);
+        $variant1->method('getOnHold')->willReturn(0);
+        $variant1->method('getOptionValues')->willReturn(new ArrayCollection());
+
+        $variant2 = $this->createMock(ProductVariantInterface::class);
+        $variant2->method('getId')->willReturn(11);
+        $variant2->method('getCode')->willReturn('TSHIRT-M');
+        $variant2->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant2->method('isEnabled')->willReturn(true);
+        $variant2->method('isTracked')->willReturn(true);
+        $variant2->method('getOnHand')->willReturn(0);
+        $variant2->method('getOnHold')->willReturn(0);
+        $variant2->method('getOptionValues')->willReturn(new ArrayCollection());
+
+        $optionTranslation = $this->createMock(ProductOptionTranslationInterface::class);
+        $optionTranslation->method('getName')->willReturn('Size');
+
+        $option = $this->createMock(ProductOptionInterface::class);
+        $option->method('getCode')->willReturn('size');
+        $option->method('getTranslation')->willReturn($optionTranslation);
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(2);
+        $product->method('getCode')->willReturn('TSHIRT');
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$variant1, $variant2]));
+        $product->method('getMainTaxon')->willReturn(null);
+        $product->method('getAttributes')->willReturn(new ArrayCollection());
+        $product->method('getImages')->willReturn(new ArrayCollection());
+        $product->method('getOptions')->willReturn(new ArrayCollection([$option]));
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/en_US/products/t-shirt');
+
+        $events = $this->formatter->format($product);
+
+        $this->assertTrue($events[0]['data']['is_parent']);
+        $this->assertSame('out_of_stock', $events[0]['data']['availability_statuses']['DEFAULT']);
+        // Sanity: a tracked variant at zero is itself out of stock.
+        $this->assertSame('out_of_stock', $events[1]['data']['availability_statuses']['DEFAULT']);
+    }
+
+    public function testParentWithOneAvailableVariantIsAvailable(): void
+    {
+        // Counterpart: one in-stock variant makes the parent available.
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('T-Shirt');
+        $translation->method('getDescription')->willReturn('A t-shirt');
+        $translation->method('getSlug')->willReturn('t-shirt');
+
+        $channelPricing = $this->createMock(ChannelPricingInterface::class);
+        $channelPricing->method('getPrice')->willReturn(2999);
+        $channelPricing->method('getOriginalPrice')->willReturn(null);
+
+        $channel = $this->createChannel();
+
+        $soldOut = $this->createMock(ProductVariantInterface::class);
+        $soldOut->method('getId')->willReturn(10);
+        $soldOut->method('getCode')->willReturn('TSHIRT-S');
+        $soldOut->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $soldOut->method('isEnabled')->willReturn(true);
+        $soldOut->method('isTracked')->willReturn(true);
+        $soldOut->method('getOnHand')->willReturn(0);
+        $soldOut->method('getOnHold')->willReturn(0);
+        $soldOut->method('getOptionValues')->willReturn(new ArrayCollection());
+
+        $inStock = $this->createMock(ProductVariantInterface::class);
+        $inStock->method('getId')->willReturn(11);
+        $inStock->method('getCode')->willReturn('TSHIRT-M');
+        $inStock->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $inStock->method('isEnabled')->willReturn(true);
+        $inStock->method('isTracked')->willReturn(true);
+        $inStock->method('getOnHand')->willReturn(5);
+        $inStock->method('getOnHold')->willReturn(0);
+        $inStock->method('getOptionValues')->willReturn(new ArrayCollection());
+
+        $optionTranslation = $this->createMock(ProductOptionTranslationInterface::class);
+        $optionTranslation->method('getName')->willReturn('Size');
+
+        $option = $this->createMock(ProductOptionInterface::class);
+        $option->method('getCode')->willReturn('size');
+        $option->method('getTranslation')->willReturn($optionTranslation);
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(2);
+        $product->method('getCode')->willReturn('TSHIRT');
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$soldOut, $inStock]));
+        $product->method('getMainTaxon')->willReturn(null);
+        $product->method('getAttributes')->willReturn(new ArrayCollection());
+        $product->method('getImages')->willReturn(new ArrayCollection());
+        $product->method('getOptions')->willReturn(new ArrayCollection([$option]));
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/en_US/products/t-shirt');
+
+        $events = $this->formatter->format($product);
+
+        $this->assertTrue($events[0]['data']['is_parent']);
+        $this->assertSame('available', $events[0]['data']['availability_statuses']['DEFAULT']);
     }
 
     public function testFormatForDeletion(): void
@@ -1212,5 +1366,214 @@ class ProductFormatterTest extends TestCase
         $events = $this->formatter->format($product);
 
         $this->assertEmpty($events[0]['data']['prices']['DEFAULT']);
+    }
+
+    public function testFormatReadsMaxOrderQuantityFromAttribute(): void
+    {
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('Capped Product');
+        $translation->method('getDescription')->willReturn('');
+        $translation->method('getSlug')->willReturn('capped');
+
+        $channelPricing = $this->createMock(ChannelPricingInterface::class);
+        $channelPricing->method('getPrice')->willReturn(1000);
+        $channelPricing->method('getOriginalPrice')->willReturn(null);
+
+        $channel = $this->createChannel();
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getCode')->willReturn('CAP-001');
+        $variant->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant->method('isEnabled')->willReturn(true);
+        $variant->method('isTracked')->willReturn(false);
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+        $product->method('getCode')->willReturn('CAP');
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
+        $product->method('getMainTaxon')->willReturn(null);
+        $product->method('getAttributes')->willReturn(new ArrayCollection([
+            $this->createAttributeValue('max_order_qty', '5'),
+            $this->createAttributeValue('condition', 'refurbished'),
+            $this->createAttributeValue('virtual', true),
+        ]));
+        $product->method('getImages')->willReturn(new ArrayCollection());
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/capped');
+
+        $events = $this->formatter->format($product);
+
+        $this->assertSame(5, $events[0]['data']['max_order_quantities']['DEFAULT']);
+        $this->assertSame('refurbished', $events[0]['data']['condition']);
+        $this->assertTrue($events[0]['data']['is_virtual']);
+        $this->assertTrue($events[0]['data']['available_for_order']);
+    }
+
+    /**
+     * A non-positive max-order-quantity (0 or negative) is meaningless — 0
+     * would make the product un-orderable — so it is reported as null (no
+     * limit), matching the WooCommerce contract.
+     */
+    #[DataProvider('nonPositiveMaxOrderQuantityProvider')]
+    public function testNonPositiveMaxOrderQuantityIsTreatedAsNoLimit(mixed $stored): void
+    {
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('Zero Cap');
+        $translation->method('getDescription')->willReturn('');
+        $translation->method('getSlug')->willReturn('zero-cap');
+
+        $channelPricing = $this->createMock(ChannelPricingInterface::class);
+        $channelPricing->method('getPrice')->willReturn(1000);
+        $channelPricing->method('getOriginalPrice')->willReturn(null);
+
+        $channel = $this->createChannel();
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getCode')->willReturn('ZERO-001');
+        $variant->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant->method('isEnabled')->willReturn(true);
+        $variant->method('isTracked')->willReturn(false);
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+        $product->method('getCode')->willReturn('ZERO');
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
+        $product->method('getMainTaxon')->willReturn(null);
+        $product->method('getAttributes')->willReturn(new ArrayCollection([
+            $this->createAttributeValue('max_order_qty', $stored),
+        ]));
+        $product->method('getImages')->willReturn(new ArrayCollection());
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/zero-cap');
+
+        $events = $this->formatter->format($product);
+
+        $this->assertNull($events[0]['data']['max_order_quantities']['DEFAULT']);
+    }
+
+    public static function nonPositiveMaxOrderQuantityProvider(): array
+    {
+        return [
+            'int zero' => [0],
+            'int negative' => [-3],
+            'string zero' => ['0'],
+            'string negative' => ['-3'],
+        ];
+    }
+
+    public function testDisabledProductIsNotAvailableForOrder(): void
+    {
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('Disabled');
+        $translation->method('getDescription')->willReturn('');
+        $translation->method('getSlug')->willReturn('disabled-order');
+
+        $channelPricing = $this->createMock(ChannelPricingInterface::class);
+        $channelPricing->method('getPrice')->willReturn(1000);
+        $channelPricing->method('getOriginalPrice')->willReturn(null);
+
+        $channel = $this->createChannel();
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getCode')->willReturn('DIS-002');
+        $variant->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant->method('isEnabled')->willReturn(true);
+        $variant->method('isTracked')->willReturn(false);
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(1);
+        $product->method('getCode')->willReturn('DIS');
+        $product->method('isEnabled')->willReturn(false);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
+        $product->method('getMainTaxon')->willReturn(null);
+        $product->method('getAttributes')->willReturn(new ArrayCollection());
+        $product->method('getImages')->willReturn(new ArrayCollection());
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/disabled-order');
+
+        $events = $this->formatter->format($product);
+
+        $this->assertFalse($events[0]['data']['available_for_order']);
+    }
+
+    public function testVariantPayloadIncludesMaxOrderAndContractFields(): void
+    {
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('T-Shirt');
+        $translation->method('getDescription')->willReturn('A t-shirt');
+        $translation->method('getSlug')->willReturn('t-shirt');
+
+        $channelPricing = $this->createMock(ChannelPricingInterface::class);
+        $channelPricing->method('getPrice')->willReturn(2999);
+        $channelPricing->method('getOriginalPrice')->willReturn(null);
+
+        $channel = $this->createChannel();
+
+        $variant1 = $this->createMock(ProductVariantInterface::class);
+        $variant1->method('getId')->willReturn(10);
+        $variant1->method('getCode')->willReturn('TSHIRT-S');
+        $variant1->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant1->method('isEnabled')->willReturn(true);
+        $variant1->method('isTracked')->willReturn(false);
+        $variant1->method('getOptionValues')->willReturn(new ArrayCollection());
+
+        $variant2 = $this->createMock(ProductVariantInterface::class);
+        $variant2->method('getId')->willReturn(11);
+        $variant2->method('getCode')->willReturn('TSHIRT-M');
+        $variant2->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant2->method('isEnabled')->willReturn(true);
+        $variant2->method('isTracked')->willReturn(false);
+        $variant2->method('getOptionValues')->willReturn(new ArrayCollection());
+
+        $option = $this->createMock(ProductOptionInterface::class);
+        $option->method('getCode')->willReturn('size');
+        $option->method('getTranslation')->willThrowException(new \RuntimeException('no translation'));
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(2);
+        $product->method('getCode')->willReturn('TSHIRT');
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$variant1, $variant2]));
+        $product->method('getMainTaxon')->willReturn(null);
+        $product->method('getAttributes')->willReturn(new ArrayCollection([
+            $this->createAttributeValue('max_order_qty', 7),
+        ]));
+        $product->method('getImages')->willReturn(new ArrayCollection());
+        $product->method('getOptions')->willReturn(new ArrayCollection([$option]));
+
+        $variant1->method('getProduct')->willReturn($product);
+        $variant2->method('getProduct')->willReturn($product);
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/t-shirt');
+
+        $events = $this->formatter->format($product);
+
+        // Parent and variant both carry the contract fields.
+        $parent = $events[0]['data'];
+        $this->assertSame(7, $parent['max_order_quantities']['DEFAULT']);
+        $this->assertTrue($parent['available_for_order']);
+        $this->assertNull($parent['condition']);
+        $this->assertFalse($parent['is_virtual']);
+
+        $variant = $events[1]['data'];
+        $this->assertSame('variation-10', $variant['identification_number']);
+        $this->assertSame(7, $variant['max_order_quantities']['DEFAULT']);
+        $this->assertTrue($variant['available_for_order']);
+        $this->assertNull($variant['condition']);
+        $this->assertFalse($variant['is_virtual']);
     }
 }

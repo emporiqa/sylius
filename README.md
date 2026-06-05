@@ -120,6 +120,9 @@ bin/console cache:clear
 | `media_base_path`        | string   | `'/media/image/'`    | Base path for product images. Customize for CDN or non-default media storage |
 | `brand_attribute_code`   | string   | `'brand'`            | Product attribute code used for brand/manufacturer data                      |
 | `min_order_quantity_attribute` | string | `'min_order_qty'` | Product attribute code holding the minimum order quantity. Stores without this attribute defined see a default minimum of 1. Listeners on `MinOrderQuantityEvent` may override the value. |
+| `max_order_quantity_attribute` | string | `'max_order_qty'` | Product attribute code holding the maximum order quantity per order. Sylius has no native max-per-order, so this is read from the configured attribute. Stores without it defined — or with a non-positive value — see no cap (`null`). The Emporiqa assistant never adds more than this value to the cart. |
+| `condition_attribute`    | string   | `'condition'`        | Product attribute code holding the item condition (`new`/`used`/`refurbished`). Products without it defined send `null`. |
+| `virtual_attribute`      | string   | `'virtual'`          | Product attribute code marking a product as virtual. Sylius has no native virtual flag, so this is read from the configured attribute. Products without it defined send `false`. |
 | `enabled_languages`      | string[] | `['en_US', 'de_DE']` | Sylius locale codes to sync                                                  |
 | `sync.products`          | bool     | `true`               | Enable automatic product synchronization                                     |
 | `sync.pages`             | bool     | `true`               | Enable automatic page synchronization                                        |
@@ -140,6 +143,9 @@ emporiqa:
     media_base_path: '/media/image/'     # optional, customize for CDN/S3/LiipImagine
     brand_attribute_code: 'brand'        # optional, product attribute for brand
     min_order_quantity_attribute: 'min_order_qty'  # optional, attribute holding the min order quantity
+    max_order_quantity_attribute: 'max_order_qty'  # optional, attribute holding the max order quantity per order
+    condition_attribute: 'condition'    # optional, attribute holding item condition (new/used/refurbished)
+    virtual_attribute: 'virtual'        # optional, attribute marking a product as virtual
     enabled_languages: ['en_US', 'de_DE']
     sync:
         products: true
@@ -257,9 +263,16 @@ Each product or variant is sent as a single consolidated event containing all ch
       "b2b": 25
     },
     "min_order_quantities": {
-      "": 1,
+      "": 6,
       "b2b": 6
     },
+    "max_order_quantities": {
+      "": 10,
+      "b2b": 10
+    },
+    "available_for_order": true,
+    "condition": "new",
+    "is_virtual": false,
     "images": {
       "": ["https://store.com/media/image/product.jpg"]
     },
@@ -274,6 +287,14 @@ Each product or variant is sent as a single consolidated event containing all ch
 ```
 
 For variable products, the parent is synced with `is_parent: true` and `variation_attributes` containing the translated option names (e.g., `{"": {"en_US": ["Color", "Size"], "de_DE": ["Farbe", "Größe"]}}`). Each variant is synced separately with `parent_sku` referencing the parent and `variation_attributes: {}` (empty object).
+
+A few fields are derived from optional product attributes since Sylius has no native equivalent:
+
+- `min_order_quantities`: per-channel dict mapping channel code to an integer minimum. Read from the product-level `min_order_quantity_attribute` attribute (default code `min_order_qty`), so **by default the same value is reported under every channel key** (the example above uses `6` for both). Stores that need genuinely per-channel minimums (e.g. a higher B2B floor) can produce them with a `MinOrderQuantityEvent` listener — that is the only way the per-channel values diverge.
+- `max_order_quantities`: per-channel dict mapping channel code to an integer cap or `null` (no limit). The cap is read from the product-level `max_order_quantity_attribute` attribute (default code `max_order_qty`, configurable like `min_order_qty`), so the same value is reported under every channel key — unlike `min_order_quantities`, there is no per-channel override event. The Emporiqa assistant never adds more than this value to the cart.
+- `available_for_order`: boolean derived from the product's `isEnabled()` state.
+- `condition`: string (`new`/`used`/`refurbished`) or `null`. Read from the `condition_attribute` product attribute (default code `condition`); `null` when the attribute is not set.
+- `is_virtual`: boolean read from the `virtual_attribute` product attribute (default code `virtual`); `false` when the attribute is not set.
 
 ### Delete Events
 

@@ -4,6 +4,63 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [v1.8.0] - 2026-06-05
+
+### Added
+- **Four new product-contract fields on product and variant events**, aligning
+  the Sylius payload with the WooCommerce integration:
+  - `max_order_quantities`: per-channel dict of the maximum order quantity, or
+    `null` for no limit. Sylius has no native max-per-order, so the cap is read
+    from the product-level `max_order_quantity_attribute` attribute (default
+    code `max_order_qty`). Because the source is product-level, the same value
+    is reported under every channel key; there is no per-channel override event
+    (unlike `min_order_quantities`). A non-positive value (0 or negative) is
+    treated as `null` (no limit) rather than emitted verbatim, so a
+    misconfigured attribute can never make a product un-orderable.
+  - `available_for_order`: boolean derived from the product's `isEnabled()`
+    state. Distinct from stock — out-of-stock is still expressed via
+    `stock_quantities` / `availability_statuses`.
+  - `condition`: string (`new` / `used` / `refurbished`) or `null`, read from
+    the `condition_attribute` attribute (default code `condition`).
+  - `is_virtual`: boolean read from the `virtual_attribute` attribute (default
+    code `virtual`); `false` when absent.
+- New configuration options `max_order_quantity_attribute`,
+  `condition_attribute`, and `virtual_attribute`, each with sensible defaults
+  so existing installs need no config change.
+
+### Fixed
+- **A configurable product whose variants are all out of stock was reported
+  as available on the parent.** `formatParentProduct` called
+  `getAvailabilityStatus($product)` with no variant, which only checks the
+  product's enabled flag — so the parent's `availability_statuses` read
+  `available` regardless of variant stock. The Emporiqa backend trusts the
+  parent point's stored availability when filtering search results, so
+  sold-out configurable products were surfaced and recommended, then failed
+  at add-to-cart. The parent now aggregates across variants (available when
+  at least one variant is available, otherwise out of stock), matching the
+  WooCommerce, Drupal, Magento, and PrestaShop formatters. Sylius has no
+  backorder state, so the aggregation stays binary.
+- **Variant stock changes left the parent's stored availability stale.** The
+  lightweight `product.availability` event (emitted on an inventory-only
+  variant change, e.g. an order-driven stock decrement) only carried the
+  `variation-{id}` point. The Emporiqa backend updates exactly the
+  identification_number it receives and never re-derives the parent, so a
+  sellout of the last in-stock variant would update that variation but leave
+  the parent showing as available until the next full product save — the
+  full-event fix above only corrected the full-sync path. `VariantStockFormatter`
+  now also emits a `product-{id}` parent availability event (with the
+  re-aggregated status and `null` stock, mirroring the full parent payload)
+  for multi-variant products, so order-driven sellouts keep the parent
+  correct in real time. `VariantStockFormatterInterface::format()` now returns
+  a list of events instead of a single nullable event.
+
+### Migration notes
+- `VariantStockFormatterInterface::format()` changed signature from
+  `format(ProductVariantInterface): ?array` to
+  `format(ProductVariantInterface): array` (a list of event arrays, empty when
+  nothing to send). Custom implementations or decorators of this interface must
+  return a list; callers consuming a single event must read `$events[0]`.
+
 ## [v1.7.0] - 2026-06-03
 
 ### Fixed

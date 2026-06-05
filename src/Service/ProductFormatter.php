@@ -32,6 +32,9 @@ class ProductFormatter implements ProductFormatterInterface
         private ?LoggerInterface $logger = null,
         private string $minOrderQuantityAttribute = 'min_order_qty',
         private ?EventDispatcherInterface $eventDispatcher = null,
+        private string $maxOrderQuantityAttribute = 'max_order_qty',
+        private string $conditionAttribute = 'condition',
+        private string $virtualAttribute = 'virtual',
     ) {}
 
     public function format(ProductInterface $product): array
@@ -112,6 +115,7 @@ class ProductFormatter implements ProductFormatterInterface
         $images = [];
         $attributes = [];
         $minOrderQuantities = [];
+        $maxOrderQuantities = [];
 
         foreach ($product->getChannels() as $channel) {
             $empChannelKey = $this->resolveChannelKey($channel);
@@ -142,6 +146,7 @@ class ProductFormatter implements ProductFormatterInterface
             $stockQuantities[$empChannelKey] = $this->getStockQuantity($variant);
             $images[$empChannelKey] = $this->getProductImages($product);
             $minOrderQuantities[$empChannelKey] = $this->getMinOrderQuantity($product, $empChannelKey);
+            $maxOrderQuantities[$empChannelKey] = $this->getMaxOrderQuantity($product, $empChannelKey);
         }
 
         return [
@@ -159,6 +164,10 @@ class ProductFormatter implements ProductFormatterInterface
                 'availability_statuses' => $availabilityStatuses,
                 'stock_quantities' => $stockQuantities,
                 'min_order_quantities' => $minOrderQuantities,
+                'max_order_quantities' => $maxOrderQuantities,
+                'available_for_order' => $this->isAvailableForOrder($product),
+                'condition' => $this->getProductCondition($product),
+                'is_virtual' => $this->isVirtual($product),
                 'images' => $images,
                 'attributes' => $attributes,
                 'parent_sku' => null,
@@ -185,6 +194,7 @@ class ProductFormatter implements ProductFormatterInterface
         $attributes = [];
         $variationAttributes = [];
         $minOrderQuantities = [];
+        $maxOrderQuantities = [];
 
         foreach ($product->getChannels() as $channel) {
             $empChannelKey = $this->resolveChannelKey($channel);
@@ -212,13 +222,16 @@ class ProductFormatter implements ProductFormatterInterface
 
             $brands[$empChannelKey] = $this->getBrandValue($product) ?? '';
             $prices[$empChannelKey] = $this->getChannelPrices($channel, $defaultVariant);
-            $availabilityStatuses[$empChannelKey] = $this->getAvailabilityStatus($product);
+            $availabilityStatuses[$empChannelKey] = $this->getParentAvailabilityStatus($product);
             $stockQuantities[$empChannelKey] = null;
             $images[$empChannelKey] = $this->getProductImages($product);
             // Parent reflects the strictest constraint across its variants —
             // mirrors the WooCommerce variable-product pattern. Variant-level
             // overrides come through formatVariant().
             $minOrderQuantities[$empChannelKey] = $this->getMaxVariantMinOrderQuantity($product, $empChannelKey);
+            // Max-per-order is sourced from a product-level attribute, so it is
+            // identical across variants — read it once for the parent.
+            $maxOrderQuantities[$empChannelKey] = $this->getMaxOrderQuantity($product, $empChannelKey);
         }
 
         return [
@@ -236,6 +249,10 @@ class ProductFormatter implements ProductFormatterInterface
                 'availability_statuses' => $availabilityStatuses,
                 'stock_quantities' => $stockQuantities,
                 'min_order_quantities' => $minOrderQuantities,
+                'max_order_quantities' => $maxOrderQuantities,
+                'available_for_order' => $this->isAvailableForOrder($product),
+                'condition' => $this->getProductCondition($product),
+                'is_virtual' => $this->isVirtual($product),
                 'images' => $images,
                 'attributes' => $attributes,
                 'parent_sku' => null,
@@ -259,6 +276,7 @@ class ProductFormatter implements ProductFormatterInterface
         $images = [];
         $attributes = [];
         $minOrderQuantities = [];
+        $maxOrderQuantities = [];
 
         foreach ($product->getChannels() as $channel) {
             $empChannelKey = $this->resolveChannelKey($channel);
@@ -296,6 +314,7 @@ class ProductFormatter implements ProductFormatterInterface
             $stockQuantities[$empChannelKey] = $this->getStockQuantity($variant);
             $images[$empChannelKey] = $this->getProductImages($product);
             $minOrderQuantities[$empChannelKey] = $this->getMinOrderQuantity($variant, $empChannelKey);
+            $maxOrderQuantities[$empChannelKey] = $this->getMaxOrderQuantity($variant, $empChannelKey);
         }
 
         return [
@@ -313,6 +332,10 @@ class ProductFormatter implements ProductFormatterInterface
                 'availability_statuses' => $availabilityStatuses,
                 'stock_quantities' => $stockQuantities,
                 'min_order_quantities' => $minOrderQuantities,
+                'max_order_quantities' => $maxOrderQuantities,
+                'available_for_order' => $this->isAvailableForOrder($product),
+                'condition' => $this->getProductCondition($product),
+                'is_virtual' => $this->isVirtual($product),
                 'images' => $images,
                 'attributes' => $attributes,
                 'parent_sku' => $product->getCode() ?? '',
@@ -416,6 +439,34 @@ class ProductFormatter implements ProductFormatterInterface
         }
 
         return self::AVAILABILITY_AVAILABLE;
+    }
+
+    /**
+     * Aggregate availability for a configurable product's parent payload.
+     *
+     * `getAvailabilityStatus($product)` called with no variant only checks the
+     * product's enabled flag, so a product whose variants are all out of stock
+     * would report the parent as available. The Emporiqa backend trusts the
+     * parent point's stored availability when filtering search results
+     * (products_search_service: `VariationGroup.parent.is_available`), so a
+     * wrong parent value surfaces sold-out products. Aggregate instead: the
+     * parent is available when at least one variant is available, otherwise
+     * out of stock — matching the WooCommerce / Drupal / Magento / PrestaShop
+     * formatters. Sylius has no backorder state, so this stays binary.
+     */
+    private function getParentAvailabilityStatus(ProductInterface $product): string
+    {
+        if (!$product->isEnabled()) {
+            return self::AVAILABILITY_OUT_OF_STOCK;
+        }
+
+        foreach ($product->getVariants() as $variant) {
+            if ($this->getAvailabilityStatus($product, $variant) === self::AVAILABILITY_AVAILABLE) {
+                return self::AVAILABILITY_AVAILABLE;
+            }
+        }
+
+        return self::AVAILABILITY_OUT_OF_STOCK;
     }
 
     private function getStockQuantity(?ProductVariantInterface $variant): ?int
@@ -646,6 +697,144 @@ class ProductFormatter implements ProductFormatterInterface
         }
 
         return null;
+    }
+
+    /**
+     * Resolve the max-order-quantity for a product / variant on a given
+     * channel. Sylius core has no native field for this, so we source it from
+     * the configured product attribute (default: `max_order_qty`), mirroring
+     * the min-order-quantity mechanism. Returns null when the attribute is
+     * absent — null means "no upper limit". For variants we read the parent
+     * product's attribute, since Sylius doesn't model per-variant attributes
+     * here.
+     *
+     * @param ProductInterface|ProductVariantInterface $entity
+     */
+    private function getMaxOrderQuantity(object $entity, string $channelKey): ?int
+    {
+        if ($entity instanceof ProductVariantInterface) {
+            $product = $entity->getProduct();
+        } elseif ($entity instanceof ProductInterface) {
+            $product = $entity;
+        } else {
+            return null;
+        }
+
+        if ($product === null) {
+            return null;
+        }
+
+        return $this->readMaxOrderQuantityFromAttributes($product);
+    }
+
+    private function readMaxOrderQuantityFromAttributes(ProductInterface $product): ?int
+    {
+        $targetCode = strtolower($this->maxOrderQuantityAttribute);
+
+        foreach ($product->getAttributes() as $attributeValue) {
+            $code = strtolower($attributeValue->getAttribute()?->getCode() ?? '');
+            if ($code !== $targetCode) {
+                continue;
+            }
+
+            $value = $attributeValue->getValue();
+
+            // A non-positive cap is meaningless (0 would make the product
+            // un-orderable); treat it as "no limit" to match the WooCommerce
+            // contract.
+            if (is_int($value)) {
+                return $value > 0 ? $value : null;
+            }
+            if (is_numeric($value)) {
+                $int = (int) $value;
+
+                return $int > 0 ? $int : null;
+            }
+            if (is_string($value) && $value !== '' && is_numeric(trim($value))) {
+                $int = (int) trim($value);
+
+                return $int > 0 ? $int : null;
+            }
+
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the product can currently be ordered. Sylius has no dedicated
+     * field, so we derive it from the enabled flag.
+     */
+    private function isAvailableForOrder(ProductInterface $product): bool
+    {
+        return $product->isEnabled();
+    }
+
+    /**
+     * Product condition (e.g. "new", "used", "refurbished"). Sylius has no
+     * native field; read from the configured product attribute (default:
+     * `condition`), returning null when absent.
+     */
+    private function getProductCondition(ProductInterface $product): ?string
+    {
+        $targetCode = strtolower($this->conditionAttribute);
+
+        foreach ($product->getAttributes() as $attributeValue) {
+            if (strtolower($attributeValue->getAttribute()?->getCode() ?? '') !== $targetCode) {
+                continue;
+            }
+
+            $value = $attributeValue->getValue();
+
+            if (is_string($value)) {
+                return $value !== '' ? $value : null;
+            }
+            if (is_array($value)) {
+                $joined = implode(', ', array_filter($value, 'is_string'));
+
+                return $joined !== '' ? $joined : null;
+            }
+            if (is_scalar($value)) {
+                return (string) $value;
+            }
+
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the product is virtual / non-shippable. Sylius has no native
+     * virtual flag; read from the configured product attribute (default:
+     * `virtual`), defaulting to false when absent.
+     */
+    private function isVirtual(ProductInterface $product): bool
+    {
+        $targetCode = strtolower($this->virtualAttribute);
+
+        foreach ($product->getAttributes() as $attributeValue) {
+            if (strtolower($attributeValue->getAttribute()?->getCode() ?? '') !== $targetCode) {
+                continue;
+            }
+
+            $value = $attributeValue->getValue();
+
+            if (is_bool($value)) {
+                return $value;
+            }
+            if (is_string($value)) {
+                return in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'on'], true);
+            }
+            if (is_numeric($value)) {
+                return (int) $value === 1;
+            }
+
+            return false;
+        }
+
+        return false;
     }
 
     private function generateProductUrl(ProductInterface $product, string $locale): string

@@ -31,6 +31,9 @@ class EmporiqaExtension extends Extension
         $container->setParameter('emporiqa.enabled_languages', $config['enabled_languages']);
         $container->setParameter('emporiqa.brand_attribute_code', $config['brand_attribute_code']);
         $container->setParameter('emporiqa.min_order_quantity_attribute', $config['min_order_quantity_attribute']);
+        $container->setParameter('emporiqa.max_order_quantity_attribute', $config['max_order_quantity_attribute']);
+        $container->setParameter('emporiqa.condition_attribute', $config['condition_attribute']);
+        $container->setParameter('emporiqa.virtual_attribute', $config['virtual_attribute']);
         $container->setParameter('emporiqa.sync.products', $config['sync']['products']);
         $container->setParameter('emporiqa.sync.pages', $config['sync']['pages']);
         $container->setParameter('emporiqa.sync.stock', $config['sync']['stock']);

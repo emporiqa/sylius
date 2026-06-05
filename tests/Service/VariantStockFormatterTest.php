@@ -29,32 +29,74 @@ class VariantStockFormatterTest extends TestCase
         return $channel;
     }
 
-    public function testTrackedInStockMultiVariantUsesVariationId(): void
+    private function trackedVariant(int $id, string $code, int $onHand, int $onHold = 0, bool $enabled = true): ProductVariantInterface
+    {
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn($id);
+        $variant->method('getCode')->willReturn($code);
+        $variant->method('isEnabled')->willReturn($enabled);
+        $variant->method('isTracked')->willReturn(true);
+        $variant->method('getOnHand')->willReturn($onHand);
+        $variant->method('getOnHold')->willReturn($onHold);
+
+        return $variant;
+    }
+
+    public function testTrackedInStockMultiVariantEmitsVariationAndParent(): void
     {
         $product = $this->createMock(ProductInterface::class);
         $product->method('isEnabled')->willReturn(true);
+        $product->method('getId')->willReturn(2);
+        $product->method('getCode')->willReturn('PROD');
         $product->method('getChannels')->willReturn(new ArrayCollection([$this->channel('WEB')]));
 
-        $variant = $this->createMock(ProductVariantInterface::class);
-        $variant->method('getId')->willReturn(10);
-        $variant->method('getCode')->willReturn('SKU-RED');
-        $variant->method('getProduct')->willReturn($product);
-        $variant->method('isEnabled')->willReturn(true);
-        $variant->method('isTracked')->willReturn(true);
-        $variant->method('getOnHand')->willReturn(8);
-        $variant->method('getOnHold')->willReturn(3);
+        $saved = $this->trackedVariant(10, 'SKU-RED', 8, 3);
+        $sibling = $this->trackedVariant(11, 'SKU-BLUE', 0, 0);
+        $product->method('getVariants')->willReturn(new ArrayCollection([$saved, $sibling]));
+        $saved->method('getProduct')->willReturn($product);
 
-        // Multi-variant product (count > 1).
-        $product->method('getVariants')->willReturn(new ArrayCollection([$variant, clone $variant]));
+        $events = $this->formatter->format($saved);
 
-        $event = $this->formatter->format($variant);
+        // Multi-variant: one variation event PLUS the re-aggregated parent.
+        $this->assertCount(2, $events);
 
-        $this->assertNotNull($event);
-        $this->assertSame('product.availability', $event['type']);
-        $this->assertSame('variation-10', $event['data']['identification_number']);
-        $this->assertSame('SKU-RED', $event['data']['sku']);
-        $this->assertSame(['WEB' => 'available'], $event['data']['availability_statuses']);
-        $this->assertSame(['WEB' => 5], $event['data']['stock_quantities']);
+        $this->assertSame('product.availability', $events[0]['type']);
+        $this->assertSame('variation-10', $events[0]['data']['identification_number']);
+        $this->assertSame('SKU-RED', $events[0]['data']['sku']);
+        $this->assertSame(['WEB' => 'available'], $events[0]['data']['availability_statuses']);
+        $this->assertSame(['WEB' => 5], $events[0]['data']['stock_quantities']);
+
+        // Parent: available because at least one variant (the saved one) is
+        // in stock; stock is null on the parent.
+        $this->assertSame('product-2', $events[1]['data']['identification_number']);
+        $this->assertSame(['WEB' => 'available'], $events[1]['data']['availability_statuses']);
+        $this->assertSame(['WEB' => null], $events[1]['data']['stock_quantities']);
+    }
+
+    public function testLastVariantSelloutMarksParentOutOfStock(): void
+    {
+        // The exact gap this fix closes: the saved variant goes to zero and
+        // every other variant is already out of stock, so the parent's stored
+        // availability must flip to out_of_stock via the lightweight path —
+        // not stay 'available' until the next full sync.
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getId')->willReturn(3);
+        $product->method('getCode')->willReturn('PROD3');
+        $product->method('getChannels')->willReturn(new ArrayCollection([$this->channel('WEB')]));
+
+        $saved = $this->trackedVariant(20, 'SKU-A', 0, 0);
+        $sibling = $this->trackedVariant(21, 'SKU-B', 0, 0);
+        $product->method('getVariants')->willReturn(new ArrayCollection([$saved, $sibling]));
+        $saved->method('getProduct')->willReturn($product);
+
+        $events = $this->formatter->format($saved);
+
+        $this->assertCount(2, $events);
+        $this->assertSame('variation-20', $events[0]['data']['identification_number']);
+        $this->assertSame(['WEB' => 'out_of_stock'], $events[0]['data']['availability_statuses']);
+        $this->assertSame('product-3', $events[1]['data']['identification_number']);
+        $this->assertSame(['WEB' => 'out_of_stock'], $events[1]['data']['availability_statuses']);
     }
 
     public function testSimpleProductUsesProductId(): void
@@ -75,10 +117,12 @@ class VariantStockFormatterTest extends TestCase
         // Single-variant product.
         $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
 
-        $event = $this->formatter->format($variant);
+        $events = $this->formatter->format($variant);
 
-        $this->assertSame('product-99', $event['data']['identification_number']);
-        $this->assertSame(['WEB' => 4], $event['data']['stock_quantities']);
+        // Single variant → exactly one event, under product-{id}, no parent.
+        $this->assertCount(1, $events);
+        $this->assertSame('product-99', $events[0]['data']['identification_number']);
+        $this->assertSame(['WEB' => 4], $events[0]['data']['stock_quantities']);
     }
 
     public function testUntrackedVariantReportsNullQtyAndAvailable(): void
@@ -95,10 +139,10 @@ class VariantStockFormatterTest extends TestCase
         $variant->method('isTracked')->willReturn(false);
         $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
 
-        $event = $this->formatter->format($variant);
+        $events = $this->formatter->format($variant);
 
-        $this->assertSame(['WEB' => null], $event['data']['stock_quantities']);
-        $this->assertSame(['WEB' => 'available'], $event['data']['availability_statuses']);
+        $this->assertSame(['WEB' => null], $events[0]['data']['stock_quantities']);
+        $this->assertSame(['WEB' => 'available'], $events[0]['data']['availability_statuses']);
     }
 
     public function testTrackedZeroStockIsOutOfStock(): void
@@ -117,10 +161,10 @@ class VariantStockFormatterTest extends TestCase
         $variant->method('getOnHold')->willReturn(2);
         $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
 
-        $event = $this->formatter->format($variant);
+        $events = $this->formatter->format($variant);
 
-        $this->assertSame(['WEB' => 'out_of_stock'], $event['data']['availability_statuses']);
-        $this->assertSame(['WEB' => 0], $event['data']['stock_quantities']);
+        $this->assertSame(['WEB' => 'out_of_stock'], $events[0]['data']['availability_statuses']);
+        $this->assertSame(['WEB' => 0], $events[0]['data']['stock_quantities']);
     }
 
     public function testDisabledProductIsOutOfStock(): void
@@ -139,12 +183,12 @@ class VariantStockFormatterTest extends TestCase
         $variant->method('getOnHold')->willReturn(0);
         $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
 
-        $event = $this->formatter->format($variant);
+        $events = $this->formatter->format($variant);
 
-        $this->assertSame(['WEB' => 'out_of_stock'], $event['data']['availability_statuses']);
+        $this->assertSame(['WEB' => 'out_of_stock'], $events[0]['data']['availability_statuses']);
     }
 
-    public function testNoChannelsReturnsNull(): void
+    public function testNoChannelsReturnsEmpty(): void
     {
         $product = $this->createMock(ProductInterface::class);
         $product->method('getChannels')->willReturn(new ArrayCollection([]));
@@ -152,6 +196,6 @@ class VariantStockFormatterTest extends TestCase
         $variant = $this->createMock(ProductVariantInterface::class);
         $variant->method('getProduct')->willReturn($product);
 
-        $this->assertNull($this->formatter->format($variant));
+        $this->assertSame([], $this->formatter->format($variant));
     }
 }

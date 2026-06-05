@@ -62,8 +62,10 @@ class VariantStockDoctrineListenerTest extends TestCase
         $variant = $this->makeVariant();
 
         $this->formatter->expects($this->once())->method('format')->with($variant)->willReturn([
-            'type' => 'product.availability',
-            'data' => ['identification_number' => 'variation-10', 'sku' => 'SKU-1'],
+            [
+                'type' => 'product.availability',
+                'data' => ['identification_number' => 'variation-10', 'sku' => 'SKU-1'],
+            ],
         ]);
 
         $listener = new VariantStockDoctrineListener($this->queue, $this->formatter, true, true, $this->logger);
@@ -77,8 +79,10 @@ class VariantStockDoctrineListenerTest extends TestCase
     {
         $variant = $this->makeVariant();
         $this->formatter->expects($this->once())->method('format')->willReturn([
-            'type' => 'product.availability',
-            'data' => ['identification_number' => 'variation-10'],
+            [
+                'type' => 'product.availability',
+                'data' => ['identification_number' => 'variation-10'],
+            ],
         ]);
 
         $listener = new VariantStockDoctrineListener($this->queue, $this->formatter, true, true, $this->logger);
@@ -94,8 +98,10 @@ class VariantStockDoctrineListenerTest extends TestCase
         // the production changeset and MUST be treated as inventory-only.
         $variant = $this->makeVariant();
         $this->formatter->expects($this->once())->method('format')->willReturn([
-            'type' => 'product.availability',
-            'data' => ['identification_number' => 'variation-10'],
+            [
+                'type' => 'product.availability',
+                'data' => ['identification_number' => 'variation-10'],
+            ],
         ]);
 
         $listener = new VariantStockDoctrineListener($this->queue, $this->formatter, true, true, $this->logger);

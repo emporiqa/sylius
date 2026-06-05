@@ -25,6 +25,9 @@ services:
             $brandAttributeCode: '%emporiqa.brand_attribute_code%'
             $mediaBasePath: '%emporiqa.media_base_path%'
             $minOrderQuantityAttribute: '%emporiqa.min_order_quantity_attribute%'
+            $maxOrderQuantityAttribute: '%emporiqa.max_order_quantity_attribute%'
+            $conditionAttribute: '%emporiqa.condition_attribute%'
+            $virtualAttribute: '%emporiqa.virtual_attribute%'
 
     Emporiqa\SyliusPlugin\Service\ProductFormatterInterface: '@Emporiqa\SyliusPlugin\Service\ProductFormatter'
 

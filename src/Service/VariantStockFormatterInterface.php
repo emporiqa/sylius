@@ -9,11 +9,21 @@ use Sylius\Component\Core\Model\ProductVariantInterface;
 interface VariantStockFormatterInterface
 {
     /**
-     * Builds a single lightweight `product.availability` event for a variant
-     * when only its inventory changed. Returns null when the variant has no
-     * syncable channels (nothing to send).
+     * Builds the lightweight `product.availability` event(s) for a variant
+     * when only its inventory changed.
      *
-     * @return array{type: string, data: array}|null
+     * Returns a list of events:
+     *  - a single-variant product yields one `product-{id}` event;
+     *  - a variant of a multi-variant product yields its own
+     *    `variation-{id}` event PLUS a `product-{id}` parent event carrying
+     *    the re-aggregated parent availability, because the Emporiqa backend
+     *    only updates the exact identification_number it receives and never
+     *    re-derives the parent from its variations.
+     *
+     * Returns an empty array when the variant has no syncable channels
+     * (nothing to send).
+     *
+     * @return list<array{type: string, data: array}>
      */
-    public function format(ProductVariantInterface $variant): ?array;
+    public function format(ProductVariantInterface $variant): array;
 }

@@ -93,23 +93,25 @@ class VariantStockDoctrineListener
         }
 
         try {
-            $event = $this->formatter->format($entity);
-            if ($event === null) {
+            $events = $this->formatter->format($entity);
+            if (empty($events)) {
                 return;
             }
 
-            // Mutual exclusivity: never stack a lightweight availability event
-            // on top of a full update already queued for the same variant or
-            // its parent product in this request.
-            $identificationNumber = $event['data']['identification_number'] ?? '';
+            // Mutual exclusivity: a full update already queued for this variant
+            // or its parent product this request is a superset of these
+            // lightweight availability events (the variation event and, for a
+            // multi-variant product, the re-aggregated parent event) — skip
+            // them so we never overwrite richer data with a thinner payload.
+            $variantId = $events[0]['data']['identification_number'] ?? '';
             if (
-                $this->webhookQueue->hasPendingFor($identificationNumber)
+                $this->webhookQueue->hasPendingFor($variantId)
                 || $this->webhookQueue->hasPendingFor('product-' . $product->getId())
             ) {
                 return;
             }
 
-            $this->webhookQueue->queue([$event]);
+            $this->webhookQueue->queue($events);
         } catch (\Throwable $e) {
             $this->logger?->error('Failed to queue variant availability webhook', [
                 'variant_id' => $entity->getId(),

@@ -27,16 +27,16 @@ class VariantStockFormatter implements VariantStockFormatterInterface
         private ChannelMappingResolver $channelMappingResolver,
     ) {}
 
-    public function format(ProductVariantInterface $variant): ?array
+    public function format(ProductVariantInterface $variant): array
     {
         $product = $variant->getProduct();
         if (!$product instanceof ProductInterface) {
-            return null;
+            return [];
         }
 
         $channels = $product->getChannels();
         if ($channels->isEmpty()) {
-            return null;
+            return [];
         }
 
         $availabilityStatuses = [];
@@ -50,10 +50,11 @@ class VariantStockFormatter implements VariantStockFormatterInterface
         }
 
         if (empty($availabilityStatuses)) {
-            return null;
+            return [];
         }
 
-        return [
+        $events = [];
+        $events[] = [
             'type' => 'product.availability',
             'data' => [
                 'identification_number' => $this->resolveIdentificationNumber($variant, $product),
@@ -62,6 +63,37 @@ class VariantStockFormatter implements VariantStockFormatterInterface
                 'stock_quantities' => $stockQuantities,
             ],
         ];
+
+        // For a multi-variant product the event above targets the
+        // `variation-{id}` point. The parent `product-{id}` point also stores
+        // an aggregated availability that the Emporiqa search filter trusts,
+        // and the backend never re-derives it — so we must refresh it here too,
+        // or a sellout of the last in-stock variant would leave the parent
+        // showing as available until the next full product save.
+        if ($product->getVariants()->count() > 1) {
+            $parentAvailability = [];
+            $parentStock = [];
+            $parentStatus = $this->getParentAvailabilityStatus($product);
+            foreach ($channels as $channel) {
+                $channelKey = $this->channelMappingResolver->resolveKey($channel);
+                $parentAvailability[$channelKey] = $parentStatus;
+                // Parent carries no own stock — matches ProductFormatter's
+                // parent payload (stock_quantities = null per channel).
+                $parentStock[$channelKey] = null;
+            }
+
+            $events[] = [
+                'type' => 'product.availability',
+                'data' => [
+                    'identification_number' => 'product-' . $product->getId(),
+                    'sku' => $product->getCode() ?? '',
+                    'availability_statuses' => $parentAvailability,
+                    'stock_quantities' => $parentStock,
+                ],
+            ];
+        }
+
+        return $events;
     }
 
     /**
@@ -110,5 +142,25 @@ class VariantStockFormatter implements VariantStockFormatterInterface
         }
 
         return max(0, $variant->getOnHand() - $variant->getOnHold());
+    }
+
+    /**
+     * Aggregate parent availability across all variants — identical semantics
+     * to ProductFormatter::getParentAvailabilityStatus(). Available when at
+     * least one variant is available, otherwise out of stock.
+     */
+    private function getParentAvailabilityStatus(ProductInterface $product): string
+    {
+        if (!$product->isEnabled()) {
+            return self::AVAILABILITY_OUT_OF_STOCK;
+        }
+
+        foreach ($product->getVariants() as $variant) {
+            if ($this->getAvailabilityStatus($product, $variant) === self::AVAILABILITY_AVAILABLE) {
+                return self::AVAILABILITY_AVAILABLE;
+            }
+        }
+
+        return self::AVAILABILITY_OUT_OF_STOCK;
     }
 }
