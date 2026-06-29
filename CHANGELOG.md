@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [v1.9.0] - 2026-06-29
+
+### Added
+- **Per-variant image resolution.** Variant events now emit the images linked
+  to that specific variant in Sylius rather than always repeating the full
+  product gallery. When a variant has its own linked images, only those are
+  emitted; when it has none, it falls back to the full product gallery so a
+  variant is never left without an image. The parent row continues to carry the
+  full product gallery. This lets the Emporiqa assistant show the correct photo
+  for the exact variant a shopper is looking at (e.g. the red shirt, not the
+  blue one).
+
+### Fixed
+- **Images with an empty path no longer produce empty-string URLs.** The
+  product gallery now filters out images whose path is empty instead of
+  emitting a blank URL. An empty linked path on a variant is likewise filtered,
+  so the variant correctly falls back to the product gallery rather than
+  reporting a single empty image.
+
 ## [v1.8.0] - 2026-06-05
 
 ### Added

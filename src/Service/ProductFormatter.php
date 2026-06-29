@@ -8,6 +8,7 @@ use Emporiqa\SyliusPlugin\Event\MinOrderQuantityEvent;
 use Emporiqa\SyliusPlugin\Trait\TranslationHelperTrait;
 use Psr\Log\LoggerInterface;
 use Sylius\Component\Core\Model\ChannelInterface;
+use Sylius\Component\Core\Model\ProductImageInterface;
 use Sylius\Component\Core\Model\ProductInterface;
 use Sylius\Component\Core\Model\ProductVariantInterface;
 use Sylius\Component\Taxonomy\Model\TaxonInterface;
@@ -312,7 +313,7 @@ class ProductFormatter implements ProductFormatterInterface
             $prices[$empChannelKey] = $this->getChannelPrices($channel, $variant);
             $availabilityStatuses[$empChannelKey] = $this->getAvailabilityStatus($product, $variant);
             $stockQuantities[$empChannelKey] = $this->getStockQuantity($variant);
-            $images[$empChannelKey] = $this->getProductImages($product);
+            $images[$empChannelKey] = $this->getVariantImages($variant, $product);
             $minOrderQuantities[$empChannelKey] = $this->getMinOrderQuantity($variant, $empChannelKey);
             $maxOrderQuantities[$empChannelKey] = $this->getMaxOrderQuantity($variant, $empChannelKey);
         }
@@ -561,10 +562,36 @@ class ProductFormatter implements ProductFormatterInterface
     {
         $images = [];
         foreach ($product->getImages() as $image) {
-            $images[] = $this->generateImageUrl($image->getPath());
+            $url = $this->generateImageUrl($image->getPath());
+            if ($url !== '') {
+                $images[] = $url;
+            }
         }
 
         return $images;
+    }
+
+    /**
+     * Returns the images associated with a specific variant.
+     *
+     * Sylius attaches images to the product and optionally links each one to
+     * specific variants. When a variant has its own linked images, use only
+     * those; otherwise fall back to the full product gallery so a variant is
+     * never left without an image.
+     */
+    private function getVariantImages(ProductVariantInterface $variant, ProductInterface $product): array
+    {
+        $variantImages = [];
+        foreach ($product->getImages() as $image) {
+            if ($image instanceof ProductImageInterface && $image->hasProductVariant($variant)) {
+                $url = $this->generateImageUrl($image->getPath());
+                if ($url !== '') {
+                    $variantImages[] = $url;
+                }
+            }
+        }
+
+        return !empty($variantImages) ? $variantImages : $this->getProductImages($product);
     }
 
     private function getVariantOptionAttributes(ProductVariantInterface $variant, string $locale): array

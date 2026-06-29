@@ -288,6 +288,8 @@ Each product or variant is sent as a single consolidated event containing all ch
 
 For variable products, the parent is synced with `is_parent: true` and `variation_attributes` containing the translated option names (e.g., `{"": {"en_US": ["Color", "Size"], "de_DE": ["Farbe", "Größe"]}}`). Each variant is synced separately with `parent_sku` referencing the parent and `variation_attributes: {}` (empty object).
 
+The `images` field is resolved per variant: when a variant has its own images linked in Sylius, only those are emitted; otherwise the variant falls back to the full product gallery so it is never left without an image. The parent row always carries the full product gallery. Images with an empty path are filtered out (they never produce empty-string URLs, and an empty linked path still falls back to the gallery).
+
 A few fields are derived from optional product attributes since Sylius has no native equivalent:
 
 - `min_order_quantities`: per-channel dict mapping channel code to an integer minimum. Read from the product-level `min_order_quantity_attribute` attribute (default code `min_order_qty`), so **by default the same value is reported under every channel key** (the example above uses `6` for both). Stores that need genuinely per-channel minimums (e.g. a higher B2B floor) can produce them with a `MinOrderQuantityEvent` listener — that is the only way the per-channel values diverge.

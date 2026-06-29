@@ -13,6 +13,7 @@ use Sylius\Component\Attribute\Model\AttributeInterface;
 use Sylius\Component\Attribute\Model\AttributeValueInterface;
 use Sylius\Component\Core\Model\ChannelInterface;
 use Sylius\Component\Core\Model\ChannelPricingInterface;
+use Sylius\Component\Core\Model\ProductImageInterface;
 use Sylius\Component\Core\Model\ProductInterface;
 use Sylius\Component\Core\Model\ProductTranslationInterface;
 use Sylius\Component\Core\Model\ProductVariantInterface;
@@ -197,6 +198,140 @@ class ProductFormatterTest extends TestCase
         $this->assertSame('variation-10', $events[1]['data']['identification_number']);
         $this->assertSame('TSHIRT', $events[1]['data']['parent_sku']);
         $this->assertFalse($events[1]['data']['is_parent']);
+    }
+
+    public function testVariantUsesItsOwnImagesWithProductFallback(): void
+    {
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('T-Shirt');
+        $translation->method('getDescription')->willReturn('A t-shirt');
+        $translation->method('getSlug')->willReturn('t-shirt');
+
+        $channelPricing = $this->createMock(ChannelPricingInterface::class);
+        $channelPricing->method('getPrice')->willReturn(2999);
+        $channelPricing->method('getOriginalPrice')->willReturn(null);
+
+        $channel = $this->createChannel();
+
+        // variant1 has its own linked image; variant2 has none (falls back).
+        $variant1 = $this->createMock(ProductVariantInterface::class);
+        $variant1->method('getId')->willReturn(10);
+        $variant1->method('getCode')->willReturn('TSHIRT-RED');
+        $variant1->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant1->method('isEnabled')->willReturn(true);
+        $variant1->method('isTracked')->willReturn(false);
+        $variant1->method('getOptionValues')->willReturn(new ArrayCollection());
+
+        $variant2 = $this->createMock(ProductVariantInterface::class);
+        $variant2->method('getId')->willReturn(11);
+        $variant2->method('getCode')->willReturn('TSHIRT-PLAIN');
+        $variant2->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant2->method('isEnabled')->willReturn(true);
+        $variant2->method('isTracked')->willReturn(false);
+        $variant2->method('getOptionValues')->willReturn(new ArrayCollection());
+
+        $redImage = $this->createMock(ProductImageInterface::class);
+        $redImage->method('getPath')->willReturn('red.jpg');
+        $redImage->method('hasProductVariant')
+            ->willReturnCallback(fn($v) => $v === $variant1);
+
+        $genericImage = $this->createMock(ProductImageInterface::class);
+        $genericImage->method('getPath')->willReturn('generic.jpg');
+        $genericImage->method('hasProductVariant')->willReturn(false);
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(2);
+        $product->method('getCode')->willReturn('TSHIRT');
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$variant1, $variant2]));
+        $product->method('getMainTaxon')->willReturn(null);
+        $product->method('getAttributes')->willReturn(new ArrayCollection());
+        $product->method('getImages')->willReturn(new ArrayCollection([$redImage, $genericImage]));
+        $product->method('getOptions')->willReturn(new ArrayCollection());
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/en_US/products/t-shirt');
+
+        $events = $this->formatter->format($product);
+
+        $redUrl = 'https://shop.example.com/media/image/red.jpg';
+        $genericUrl = 'https://shop.example.com/media/image/generic.jpg';
+
+        // Parent row carries the full product gallery.
+        $this->assertSame([$redUrl, $genericUrl], $events[0]['data']['images']['DEFAULT']);
+        // Variant with a linked image uses only that image.
+        $this->assertSame([$redUrl], $events[1]['data']['images']['DEFAULT']);
+        // Variant without a linked image falls back to the full product gallery.
+        $this->assertSame([$redUrl, $genericUrl], $events[2]['data']['images']['DEFAULT']);
+    }
+
+    public function testEmptyPathImagesAreFilteredAndDoNotSuppressFallback(): void
+    {
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('T-Shirt');
+        $translation->method('getDescription')->willReturn('A t-shirt');
+        $translation->method('getSlug')->willReturn('t-shirt');
+
+        $channelPricing = $this->createMock(ChannelPricingInterface::class);
+        $channelPricing->method('getPrice')->willReturn(2999);
+        $channelPricing->method('getOriginalPrice')->willReturn(null);
+
+        $channel = $this->createChannel();
+
+        // Two variants so the product takes the parent+variant path.
+        $variant1 = $this->createMock(ProductVariantInterface::class);
+        $variant1->method('getId')->willReturn(10);
+        $variant1->method('getCode')->willReturn('TSHIRT-RED');
+        $variant1->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant1->method('isEnabled')->willReturn(true);
+        $variant1->method('isTracked')->willReturn(false);
+        $variant1->method('getOptionValues')->willReturn(new ArrayCollection());
+
+        $variant2 = $this->createMock(ProductVariantInterface::class);
+        $variant2->method('getId')->willReturn(11);
+        $variant2->method('getCode')->willReturn('TSHIRT-BLUE');
+        $variant2->method('getChannelPricingForChannel')->willReturn($channelPricing);
+        $variant2->method('isEnabled')->willReturn(true);
+        $variant2->method('isTracked')->willReturn(false);
+        $variant2->method('getOptionValues')->willReturn(new ArrayCollection());
+
+        // variant1's only linked image has an empty path: it must be filtered
+        // out, and the variant must fall back to the real gallery rather than
+        // emitting a single empty-string URL.
+        $emptyLinked = $this->createMock(ProductImageInterface::class);
+        $emptyLinked->method('getPath')->willReturn('');
+        $emptyLinked->method('hasProductVariant')
+            ->willReturnCallback(fn($v) => $v === $variant1);
+
+        $galleryImage = $this->createMock(ProductImageInterface::class);
+        $galleryImage->method('getPath')->willReturn('gallery.jpg');
+        $galleryImage->method('hasProductVariant')->willReturn(false);
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(2);
+        $product->method('getCode')->willReturn('TSHIRT');
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$variant1, $variant2]));
+        $product->method('getMainTaxon')->willReturn(null);
+        $product->method('getAttributes')->willReturn(new ArrayCollection());
+        $product->method('getImages')->willReturn(new ArrayCollection([$emptyLinked, $galleryImage]));
+        $product->method('getOptions')->willReturn(new ArrayCollection());
+
+        $this->router->method('generate')->willReturn('https://shop.example.com/en_US/products/t-shirt');
+
+        $events = $this->formatter->format($product);
+
+        $galleryUrl = 'https://shop.example.com/media/image/gallery.jpg';
+
+        // Parent row: empty-path image filtered out, only the real one remains.
+        $this->assertSame([$galleryUrl], $events[0]['data']['images']['DEFAULT']);
+        // variant1: empty linked path is filtered, so it falls back to the gallery.
+        $this->assertSame([$galleryUrl], $events[1]['data']['images']['DEFAULT']);
     }
 
     public function testParentOfAllOutOfStockVariantsIsOutOfStock(): void
