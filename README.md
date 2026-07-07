@@ -4,13 +4,9 @@ Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm
 
 The chat assistant reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and drives cart and checkout through the plugin's APIs.
 
-[![Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](docs/images/product-search.jpg)](https://demo.emporiqa.com)
-
-Try it yourself on the [live demo store](https://demo.emporiqa.com).
-
-**Watch the demo:**
-
 [![Emporiqa demo: recommends a product, handles an objection, and adds it to the cart](https://img.youtube.com/vi/as54_uvk038/maxresdefault.jpg)](https://www.youtube.com/watch?v=as54_uvk038)
+
+Watch the demo, or try it yourself on the [live demo store](https://demo.emporiqa.com).
 
 ## Features
 
@@ -28,7 +24,7 @@ Try it yourself on the [live demo store](https://demo.emporiqa.com).
 - **Webhook Retry**: Automatic retry with exponential backoff for transient failures
 - **Fully Extensible**: Decorate any service interface, listen to events (`PostFormatEvent`, `CartOperationEvent`, `PreSyncEvent`, etc.)
 
-Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, Shopware, and any store via webhook API. One Emporiqa account and dashboard runs across all of them.
+Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, and any store via webhook API. One Emporiqa account and dashboard runs across all of them.
 
 ## Requirements
 
