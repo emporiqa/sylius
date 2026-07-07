@@ -8,6 +8,10 @@ The chat assistant reads your synced catalog and pages: a shopper describes what
 
 Try it yourself on the [live demo store](https://demo.emporiqa.com).
 
+**Watch the demo:**
+
+[![Emporiqa demo: recommends a product, handles an objection, and adds it to the cart](https://img.youtube.com/vi/as54_uvk038/maxresdefault.jpg)](https://www.youtube.com/watch?v=as54_uvk038)
+
 ## Features
 
 - **Product Sync**: Real-time synchronization of Sylius products and variants via webhooks
