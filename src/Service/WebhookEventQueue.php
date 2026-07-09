@@ -75,7 +75,7 @@ class WebhookEventQueue implements EventSubscriberInterface
     public function queue(array $events): void
     {
         foreach ($events as $event) {
-            $key = $event['data']['identification_number'] ?? '';
+            $key = $this->dedupKey($event);
 
             $incomingIsAvailability = ($event['type'] ?? '') === 'product.availability';
             $existingType = ($this->pendingEvents[$key]['type'] ?? null);
@@ -110,6 +110,28 @@ class WebhookEventQueue implements EventSubscriberInterface
             $event['type'] = $type;
             $this->pendingEvents[$key] = $event;
         }
+    }
+
+    /**
+     * Events without an identification_number (e.g. order.completed) must
+     * not all collapse onto one shared key and overwrite each other. Key
+     * them by type + order_id so only true duplicates dedup; events with
+     * neither identifier get a unique key and are never collapsed.
+     */
+    private function dedupKey(array $event): string
+    {
+        $identificationNumber = (string) ($event['data']['identification_number'] ?? '');
+        if ($identificationNumber !== '') {
+            return $identificationNumber;
+        }
+
+        $type = (string) ($event['type'] ?? '');
+        $orderId = (string) ($event['data']['order_id'] ?? '');
+        if ($orderId !== '') {
+            return $type . ':' . $orderId;
+        }
+
+        return uniqid($type . ':', true);
     }
 
     public function flush(): void

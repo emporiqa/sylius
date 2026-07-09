@@ -69,6 +69,89 @@ class WebhookEventQueueTest extends TestCase
         $this->queue->flush();
     }
 
+    public function testOrderEventsForDifferentOrdersDoNotCollide(): void
+    {
+        $this->webhookSender
+            ->expects($this->once())
+            ->method('sendBatch')
+            ->with($this->callback(function (array $events) {
+                $this->assertCount(2, $events);
+                $orderIds = array_column(array_column($events, 'data'), 'order_id');
+                $this->assertSame(['000000001', '000000002'], $orderIds);
+                return true;
+            }));
+
+        $this->queue->queue([
+            ['type' => 'order.completed', 'data' => ['order_id' => '000000001', 'total' => 10.0]],
+        ]);
+        $this->queue->queue([
+            ['type' => 'order.completed', 'data' => ['order_id' => '000000002', 'total' => 20.0]],
+        ]);
+
+        $this->queue->flush();
+    }
+
+    public function testDuplicateOrderEventForSameOrderIsDeduplicated(): void
+    {
+        $this->webhookSender
+            ->expects($this->once())
+            ->method('sendBatch')
+            ->with($this->callback(function (array $events) {
+                $this->assertCount(1, $events);
+                $this->assertSame('000000001', $events[0]['data']['order_id']);
+                return true;
+            }));
+
+        $this->queue->queue([
+            ['type' => 'order.completed', 'data' => ['order_id' => '000000001']],
+        ]);
+        $this->queue->queue([
+            ['type' => 'order.completed', 'data' => ['order_id' => '000000001']],
+        ]);
+
+        $this->queue->flush();
+    }
+
+    public function testOrderEventDoesNotCollideWithProductEvent(): void
+    {
+        $this->webhookSender
+            ->expects($this->once())
+            ->method('sendBatch')
+            ->with($this->callback(function (array $events) {
+                $this->assertCount(2, $events);
+                return true;
+            }));
+
+        $this->queue->queue([
+            ['type' => 'product.updated', 'data' => ['identification_number' => 'product-1']],
+        ]);
+        $this->queue->queue([
+            ['type' => 'order.completed', 'data' => ['order_id' => '000000001']],
+        ]);
+
+        $this->queue->flush();
+    }
+
+    public function testEventsWithoutAnyIdentifierAreNeverCollapsed(): void
+    {
+        $this->webhookSender
+            ->expects($this->once())
+            ->method('sendBatch')
+            ->with($this->callback(function (array $events) {
+                $this->assertCount(2, $events);
+                return true;
+            }));
+
+        $this->queue->queue([
+            ['type' => 'custom.event', 'data' => ['payload' => 'a']],
+        ]);
+        $this->queue->queue([
+            ['type' => 'custom.event', 'data' => ['payload' => 'b']],
+        ]);
+
+        $this->queue->flush();
+    }
+
     public function testPreservesCreatedOverUpdated(): void
     {
         $this->webhookSender

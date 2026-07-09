@@ -57,7 +57,7 @@ class OrderProviderTest extends TestCase
                 return $number === '000000003' ? $order : null;
             });
 
-        $result = $this->provider->findOrder('3', null, []);
+        $result = $this->provider->findOrder('3', null, ['email' => 'test@example.com']);
 
         $this->assertNotNull($result);
         $this->assertSame('000000003', $result['order_id']);
@@ -106,7 +106,7 @@ class OrderProviderTest extends TestCase
 
         $this->orderRepository->method('findOneByNumber')->willReturn($order);
 
-        $result = $this->provider->findOrder('000123', null, []);
+        $result = $this->provider->findOrder('000123', null, ['email' => 'test@example.com']);
 
         $this->assertNotNull($result);
         $this->assertSame('000123', $result['order_id']);
@@ -160,13 +160,52 @@ class OrderProviderTest extends TestCase
         $this->assertSame('000123', $result['order_id']);
     }
 
+    public function testFindOrderRequiresEmailVerificationField(): void
+    {
+        $customer = $this->createMock(CustomerInterface::class);
+        $customer->method('getEmail')->willReturn('test@example.com');
+
+        $order = $this->createMock(OrderInterface::class);
+        $order->method('getNumber')->willReturn('000123');
+        $order->method('getCustomer')->willReturn($customer);
+
+        $this->orderRepository->method('findOneByNumber')->willReturn($order);
+
+        // Sylius order numbers are sequential — without a matching email the
+        // order must not be disclosed, even though it exists.
+        $this->assertNull($this->provider->findOrder('000123', null, []));
+        $this->assertNull($this->provider->findOrder('000123', null, ['email' => '']));
+        $this->assertNull($this->provider->findOrder('000123', 'user-1', []));
+    }
+
+    public function testFindOrderRejectsOrderWithoutCustomerEmail(): void
+    {
+        $order = $this->createMock(OrderInterface::class);
+        $order->method('getNumber')->willReturn('000123');
+        $order->method('getCustomer')->willReturn(null);
+
+        $this->orderRepository->method('findOneByNumber')->willReturn($order);
+
+        $result = $this->provider->findOrder('000123', null, ['email' => 'test@example.com']);
+
+        $this->assertNull($result);
+    }
+
+    private function mockCustomer(string $email = 'test@example.com'): CustomerInterface
+    {
+        $customer = $this->createMock(CustomerInterface::class);
+        $customer->method('getEmail')->willReturn($email);
+
+        return $customer;
+    }
+
     public function testResolvesPendingPaymentStatus(): void
     {
         $order = $this->createMock(OrderInterface::class);
         $order->method('getNumber')->willReturn('000123');
         $order->method('getTotal')->willReturn(1000);
         $order->method('getCurrencyCode')->willReturn('USD');
-        $order->method('getCustomer')->willReturn(null);
+        $order->method('getCustomer')->willReturn($this->mockCustomer());
         $order->method('getCheckoutCompletedAt')->willReturn(new \DateTime());
         $order->method('getItems')->willReturn(new ArrayCollection());
         $order->method('getShipments')->willReturn(new ArrayCollection());
@@ -175,7 +214,7 @@ class OrderProviderTest extends TestCase
 
         $this->orderRepository->method('findOneByNumber')->willReturn($order);
 
-        $result = $this->provider->findOrder('000123', null, []);
+        $result = $this->provider->findOrder('000123', null, ['email' => 'test@example.com']);
 
         $this->assertSame('pending_payment', $result['status']);
     }
@@ -186,7 +225,7 @@ class OrderProviderTest extends TestCase
         $order->method('getNumber')->willReturn('000123');
         $order->method('getTotal')->willReturn(1000);
         $order->method('getCurrencyCode')->willReturn('USD');
-        $order->method('getCustomer')->willReturn(null);
+        $order->method('getCustomer')->willReturn($this->mockCustomer());
         $order->method('getCheckoutCompletedAt')->willReturn(new \DateTime());
         $order->method('getItems')->willReturn(new ArrayCollection());
         $order->method('getShipments')->willReturn(new ArrayCollection());
@@ -195,7 +234,7 @@ class OrderProviderTest extends TestCase
 
         $this->orderRepository->method('findOneByNumber')->willReturn($order);
 
-        $result = $this->provider->findOrder('000123', null, []);
+        $result = $this->provider->findOrder('000123', null, ['email' => 'test@example.com']);
 
         $this->assertSame('cancelled', $result['status']);
     }
@@ -206,7 +245,7 @@ class OrderProviderTest extends TestCase
         $order->method('getNumber')->willReturn('000123');
         $order->method('getTotal')->willReturn(1000);
         $order->method('getCurrencyCode')->willReturn('USD');
-        $order->method('getCustomer')->willReturn(null);
+        $order->method('getCustomer')->willReturn($this->mockCustomer());
         $order->method('getCheckoutCompletedAt')->willReturn(new \DateTime());
         $order->method('getItems')->willReturn(new ArrayCollection());
         $order->method('getShipments')->willReturn(new ArrayCollection());
@@ -215,7 +254,7 @@ class OrderProviderTest extends TestCase
 
         $this->orderRepository->method('findOneByNumber')->willReturn($order);
 
-        $result = $this->provider->findOrder('000123', null, []);
+        $result = $this->provider->findOrder('000123', null, ['email' => 'test@example.com']);
 
         $this->assertSame('refunded', $result['status']);
     }

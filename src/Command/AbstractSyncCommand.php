@@ -137,7 +137,15 @@ abstract class AbstractSyncCommand extends Command
         $io->newLine();
 
         if ($sessionId && !$dryRun) {
-            $this->completeSyncSession($sessionId, $entityName, $io);
+            // sync.complete marks items unseen in this session as deleted on
+            // the Emporiqa side — never send it when batches failed, or the
+            // items from the failed batches would be wiped from the remote
+            // index. Same guard as the Drupal reference implementation.
+            if ($errorCount > 0) {
+                $io->warning('Sync session was not finalized because errors occurred: items missing from this sync were NOT removed from Emporiqa. Re-run the sync after resolving the errors.');
+            } elseif ($successCount > 0) {
+                $this->completeSyncSession($sessionId, $entityName, $io);
+            }
         }
 
         $io->text(sprintf('  %d events sent, %d errors', $successCount, $errorCount));

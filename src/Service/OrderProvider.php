@@ -34,11 +34,18 @@ class OrderProvider implements OrderProviderInterface
             return null;
         }
 
-        if (isset($verificationFields['email'])) {
-            $orderEmail = $order->getCustomer()?->getEmail();
-            if ($orderEmail === null || mb_strtolower($orderEmail) !== mb_strtolower($verificationFields['email'])) {
-                return null;
-            }
+        // Email verification is mandatory (mirrors the Drupal reference):
+        // Sylius order numbers are sequential, so returning data on the
+        // number alone would let a chat user enumerate other customers'
+        // orders. No matching email — no order.
+        $email = $verificationFields['email'] ?? '';
+        if (!is_string($email) || $email === '') {
+            return null;
+        }
+
+        $orderEmail = $order->getCustomer()?->getEmail();
+        if ($orderEmail === null || mb_strtolower($orderEmail) !== mb_strtolower($email)) {
+            return null;
         }
 
         $currencyCode = $order->getCurrencyCode() ?? '';

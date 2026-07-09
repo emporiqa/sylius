@@ -73,6 +73,62 @@ class WebhookSenderTest extends TestCase
         $this->assertFalse($result);
     }
 
+    public function testSendBatchRetries429AndSucceeds(): void
+    {
+        $rateLimited = $this->createMock(ResponseInterface::class);
+        $rateLimited->method('getStatusCode')->willReturn(429);
+        $rateLimited->method('getContent')->willReturn('{"error":"Too many requests"}');
+        $rateLimited->method('getHeaders')->willReturn(['retry-after' => ['0']]);
+
+        $ok = $this->createMock(ResponseInterface::class);
+        $ok->method('getStatusCode')->willReturn(200);
+
+        $this->httpClient
+            ->expects($this->exactly(2))
+            ->method('request')
+            ->willReturnOnConsecutiveCalls($rateLimited, $ok);
+
+        $sender = $this->createSender();
+
+        $this->assertTrue($sender->sendBatch([['type' => 'test', 'data' => []]]));
+        $this->assertNull($sender->getLastError());
+    }
+
+    public function testSendBatchReturnsFalseWhen429Persists(): void
+    {
+        $rateLimited = $this->createMock(ResponseInterface::class);
+        $rateLimited->method('getStatusCode')->willReturn(429);
+        $rateLimited->method('getContent')->willReturn('{"error":"Too many requests"}');
+        $rateLimited->method('getHeaders')->willReturn(['retry-after' => ['0']]);
+
+        $this->httpClient
+            ->expects($this->exactly(3))
+            ->method('request')
+            ->willReturn($rateLimited);
+
+        $sender = $this->createSender();
+
+        $this->assertFalse($sender->sendBatch([['type' => 'test', 'data' => []]]));
+        $this->assertSame('Too many requests', $sender->getLastError());
+    }
+
+    public function testSendBatchDoesNotRetryOther4xx(): void
+    {
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(400);
+        $response->method('getContent')->willReturn('{"error":"Bad payload"}');
+
+        $this->httpClient
+            ->expects($this->once())
+            ->method('request')
+            ->willReturn($response);
+
+        $sender = $this->createSender();
+
+        $this->assertFalse($sender->sendBatch([['type' => 'test', 'data' => []]]));
+        $this->assertSame('Bad payload', $sender->getLastError());
+    }
+
     public function testSendBatchEmptyEventsReturnsTrue(): void
     {
         $this->httpClient->expects($this->never())->method('request');

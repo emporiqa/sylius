@@ -10,12 +10,14 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 use Symfony\Contracts\HttpClient\Exception\HttpExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Symfony\Contracts\HttpClient\ResponseInterface;
 
 class WebhookSender implements WebhookSenderInterface
 {
     private const DEFAULT_TIMEOUT = 10;
     private const MAX_RETRIES = 2;
     private const RETRY_DELAY_MS = 500;
+    private const MAX_RETRY_AFTER_SECONDS = 10;
 
     /**
      * Friendly message from the most recent failed sendBatch() call, or null
@@ -67,11 +69,13 @@ class WebhookSender implements WebhookSenderInterface
 
         $lastError = '';
         $lastResult = null;
+        $retryDelayMs = null;
         for ($attempt = 0; $attempt <= self::MAX_RETRIES; $attempt++) {
             if ($attempt > 0) {
-                usleep(self::RETRY_DELAY_MS * 1000 * $attempt);
+                usleep(($retryDelayMs ?? self::RETRY_DELAY_MS * $attempt) * 1000);
                 $this->logger?->info('Emporiqa webhook retry', ['attempt' => $attempt + 1, 'url' => $url]);
             }
+            $retryDelayMs = null;
 
             try {
                 $response = $this->httpClient->request('POST', $url, [
@@ -99,8 +103,11 @@ class WebhookSender implements WebhookSenderInterface
                     'error' => sprintf('HTTP %d', $statusCode),
                 ];
 
-                // Client errors (4xx) are not retryable
-                if ($statusCode >= 400 && $statusCode < 500) {
+                // Client errors (4xx) are not retryable — except 429, which
+                // is transient rate limiting: it must be retried (honoring
+                // Retry-After) so bursts during a large sync don't silently
+                // drop batches that then get deleted at sync.complete.
+                if ($statusCode >= 400 && $statusCode < 500 && $statusCode !== 429) {
                     $this->logger?->error('Emporiqa webhook failed (not retryable)', [
                         'url' => $url,
                         'status_code' => $statusCode,
@@ -108,6 +115,10 @@ class WebhookSender implements WebhookSenderInterface
                     ]);
                     $this->lastError = $this->buildFriendlyError($lastResult);
                     return false;
+                }
+
+                if ($statusCode === 429) {
+                    $retryDelayMs = $this->retryAfterMs($response);
                 }
 
                 $lastError = sprintf('HTTP %d: %s', $statusCode, $body);
@@ -219,6 +230,32 @@ class WebhookSender implements WebhookSenderInterface
     public function getLastError(): ?string
     {
         return $this->lastError;
+    }
+
+    /**
+     * Delay requested by a 429's Retry-After header, in milliseconds.
+     * Handles both delta-seconds and HTTP-date forms, capped so a huge or
+     * hostile value cannot stall the process. Returns null when the header
+     * is absent or unparsable (caller falls back to the default backoff).
+     */
+    private function retryAfterMs(ResponseInterface $response): ?int
+    {
+        $value = $response->getHeaders(false)['retry-after'][0] ?? null;
+        if ($value === null) {
+            return null;
+        }
+
+        if (ctype_digit($value)) {
+            $seconds = (int) $value;
+        } else {
+            $timestamp = strtotime($value);
+            if ($timestamp === false) {
+                return null;
+            }
+            $seconds = $timestamp - time();
+        }
+
+        return max(0, min($seconds, self::MAX_RETRY_AFTER_SECONDS)) * 1000;
     }
 
     /**

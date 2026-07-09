@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [v1.10.0] - 2026-07-09
+
+### Security
+- **Full syncs can no longer delete valid remote items after a partial
+  failure.** `sync.complete` marks items unseen in the session as deleted on
+  the Emporiqa side, but it was sent regardless of batch outcomes — so one
+  failed batch (a transient 5xx, a rate-limit burst, or a 400 on a malformed
+  product) silently wiped the remaining, still-existing items from the
+  Emporiqa index. `emporiqa:sync:products` and `emporiqa:sync:pages` now skip
+  session completion when any batch errored (or when nothing was synced) and
+  warn the merchant to re-run the sync after resolving the errors. Matches
+  the behavior of the other Emporiqa integrations.
+- **Order tracking now always requires email verification.** The order
+  lookup only checked the customer email when Emporiqa supplied one, and
+  Sylius order numbers are sequential — so a chat user could probe other
+  customers' orders by number alone. An order is now only returned when the
+  request carries a verification email matching the order's customer.
+
+### Fixed
+- **HTTP 429 (rate-limit) responses are retried instead of dropped.** The
+  webhook sender treated 429 like any other client error and gave up
+  immediately, so rate-limit bursts during a large sync silently dropped
+  whole batches. 429 is now retried with the server's `Retry-After` delay
+  when present (capped at 10s), falling back to the standard backoff.
+- **`order.completed` webhooks no longer overwrite each other.** The
+  request-scoped event queue deduplicated on `identification_number`, which
+  order events lack, so all order events in one request collapsed onto a
+  single key and only the last survived. Order events are now keyed by
+  order id, and events with no identifier at all are never collapsed.
+
 ## [v1.9.0] - 2026-06-29
 
 ### Added

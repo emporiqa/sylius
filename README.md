@@ -457,17 +457,17 @@ Emporiqa sends a signed JSON body:
 
 | Field                 | Type    | Required | Description                           |
 | --------------------- | ------- | -------- | ------------------------------------- |
-| `order_identifier`    | string  | yes      | Order number provided by the customer |
-| `timestamp`           | integer | yes      | Unix timestamp of the request         |
-| `user_id`             | string  | no       | Customer's user ID (if identified)    |
-| `verification_fields` | object  | no       | Additional verification (e.g. email)  |
+| `order_identifier`    | string  | yes      | Order number provided by the customer          |
+| `timestamp`           | integer | yes      | Unix timestamp of the request                  |
+| `user_id`             | string  | no       | Customer's user ID (if identified)             |
+| `verification_fields` | object  | yes      | Must contain the customer's `email` (v1.10.0+) |
 
 
 The `X-Emporiqa-Signature` header contains the HMAC-SHA256 signature of the raw request body, signed with your connection secret (`webhook_secret` config value).
 
 ### Response Format
 
-The built-in `OrderProvider` looks up orders by number via Sylius's `OrderRepositoryInterface`, verifies the customer email if provided in `verification_fields`, and returns:
+The built-in `OrderProvider` looks up orders by number via Sylius's `OrderRepositoryInterface` and returns the order only when `verification_fields.email` matches the order's customer email (case-insensitive). Sylius order numbers are sequential, so as of v1.10.0 email verification is mandatory — a lookup without a matching email always yields `404 Order not found`. On success it returns:
 
 ```json
 {
