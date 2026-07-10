@@ -8,9 +8,12 @@ The chat assistant reads your synced catalog and pages: a shopper describes what
 
 Watch the demo, or try it yourself on the [live demo store](https://demo.emporiqa.com).
 
+Emporiqa accounts are free to start: $25 of signup credit (about 100 conversations) is auto-applied and no card is required at signup. After the credit, you pay only when the chat talks to a shopper: $0.25 per conversation, no monthly base fee.
+
 ## Features
 
 - **Product Sync**: Real-time synchronization of Sylius products and variants via webhooks
+- **Brand-Safe Answers**: Every reply comes from your synced products and pages, never from training data. Low-confidence questions hand off to your team
 - **Page Sync**: Synchronization of any translatable page entity (policies, FAQ, blog posts, etc.)
 - **Multi-Channel**: Consolidated events with per-channel pricing, availability, and content across all languages
 - **Cart & Checkout**: REST API for in-chat cart operations (add, update, remove, clear, view, checkout URL) with event hooks
@@ -18,7 +21,6 @@ Watch the demo, or try it yourself on the [live demo store](https://demo.emporiq
 - **Order Completion**: Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
 - **Chat Widget**: Cache-safe embeddable chat widget with inline signed user tokens and currency/channel awareness
 - **Visual Search**: Shoppers upload a photo in the widget; the chatbot matches it against your synced Sylius catalog (no extra config required)
-- **Brand-Safe Answers**: Every reply comes from your synced products and pages, never from training data. Low-confidence questions hand off to your team
 - **Multi-language**: Syncs content in all configured Sylius locales with currency switcher support
 - **Console Commands**: Memory-efficient sync commands with batching, dry-run, and session management
 - **Webhook Retry**: Automatic retry with exponential backoff for transient failures
@@ -120,7 +122,7 @@ bin/console cache:clear
 | `media_base_path`        | string   | `'/media/image/'`    | Base path for product images. Customize for CDN or non-default media storage |
 | `brand_attribute_code`   | string   | `'brand'`            | Product attribute code used for brand/manufacturer data                      |
 | `min_order_quantity_attribute` | string | `'min_order_qty'` | Product attribute code holding the minimum order quantity. Stores without this attribute defined see a default minimum of 1. Listeners on `MinOrderQuantityEvent` may override the value. |
-| `max_order_quantity_attribute` | string | `'max_order_qty'` | Product attribute code holding the maximum order quantity per order. Sylius has no native max-per-order, so this is read from the configured attribute. Stores without it defined — or with a non-positive value — see no cap (`null`). The Emporiqa assistant never adds more than this value to the cart. |
+| `max_order_quantity_attribute` | string | `'max_order_qty'` | Product attribute code holding the maximum order quantity per order. Sylius has no native max-per-order, so this is read from the configured attribute. Stores without it defined (or with a non-positive value) see no cap (`null`). The Emporiqa assistant never adds more than this value to the cart. |
 | `condition_attribute`    | string   | `'condition'`        | Product attribute code holding the item condition (`new`/`used`/`refurbished`). Products without it defined send `null`. |
 | `virtual_attribute`      | string   | `'virtual'`          | Product attribute code marking a product as virtual. Sylius has no native virtual flag, so this is read from the configured attribute. Products without it defined send `false`. |
 | `enabled_languages`      | string[] | `['en_US', 'de_DE']` | Sylius locale codes to sync                                                  |
@@ -292,8 +294,8 @@ The `images` field is resolved per variant: when a variant has its own images li
 
 A few fields are derived from optional product attributes since Sylius has no native equivalent:
 
-- `min_order_quantities`: per-channel dict mapping channel code to an integer minimum. Read from the product-level `min_order_quantity_attribute` attribute (default code `min_order_qty`), so **by default the same value is reported under every channel key** (the example above uses `6` for both). Stores that need genuinely per-channel minimums (e.g. a higher B2B floor) can produce them with a `MinOrderQuantityEvent` listener — that is the only way the per-channel values diverge.
-- `max_order_quantities`: per-channel dict mapping channel code to an integer cap or `null` (no limit). The cap is read from the product-level `max_order_quantity_attribute` attribute (default code `max_order_qty`, configurable like `min_order_qty`), so the same value is reported under every channel key — unlike `min_order_quantities`, there is no per-channel override event. The Emporiqa assistant never adds more than this value to the cart.
+- `min_order_quantities`: per-channel dict mapping channel code to an integer minimum. Read from the product-level `min_order_quantity_attribute` attribute (default code `min_order_qty`), so **by default the same value is reported under every channel key** (the example above uses `6` for both). Stores that need genuinely per-channel minimums (e.g. a higher B2B floor) can produce them with a `MinOrderQuantityEvent` listener; that is the only way the per-channel values diverge.
+- `max_order_quantities`: per-channel dict mapping channel code to an integer cap or `null` (no limit). The cap is read from the product-level `max_order_quantity_attribute` attribute (default code `max_order_qty`, configurable like `min_order_qty`), so the same value is reported under every channel key. Unlike `min_order_quantities`, there is no per-channel override event. The Emporiqa assistant never adds more than this value to the cart.
 - `available_for_order`: boolean derived from the product's `isEnabled()` state.
 - `condition`: string (`new`/`used`/`refurbished`) or `null`. Read from the `condition_attribute` product attribute (default code `condition`); `null` when the attribute is not set.
 - `is_virtual`: boolean read from the `virtual_attribute` product attribute (default code `virtual`); `false` when the attribute is not set.
@@ -467,7 +469,7 @@ The `X-Emporiqa-Signature` header contains the HMAC-SHA256 signature of the raw 
 
 ### Response Format
 
-The built-in `OrderProvider` looks up orders by number via Sylius's `OrderRepositoryInterface` and returns the order only when `verification_fields.email` matches the order's customer email (case-insensitive). Sylius order numbers are sequential, so as of v1.10.0 email verification is mandatory — a lookup without a matching email always yields `404 Order not found`. On success it returns:
+The built-in `OrderProvider` looks up orders by number via Sylius's `OrderRepositoryInterface` and returns the order only when `verification_fields.email` matches the order's customer email (case-insensitive). Sylius order numbers are sequential, so as of v1.10.0 email verification is mandatory; a lookup without a matching email always yields `404 Order not found`. On success it returns:
 
 ```json
 {
@@ -614,7 +616,7 @@ The `emporiqa-cart.js` script registers `window.EmporiqaCartHandler` which the e
 - **ID extraction**: Strips prefixes from IDs (`"variation-456"` -> `456`)
 - **Response normalization**: Returns consistent `{success, error, checkoutUrl, cart}` objects
 
-CSRF protection is enforced on every cart-write via the `X-CSRF-Token` header. Fetch a token from `GET /emporiqa/api/csrf-token` and include it in mutation requests. If the framework CSRF token manager is not wired in the container, the controller fails closed with `403 CSRF protection unavailable` (as of v1.6.3 — earlier versions silently bypassed validation in that edge case).
+CSRF protection is enforced on every cart-write via the `X-CSRF-Token` header. Fetch a token from `GET /emporiqa/api/csrf-token` and include it in mutation requests. If the framework CSRF token manager is not wired in the container, the controller fails closed with `403 CSRF protection unavailable` (as of v1.6.3; earlier versions silently bypassed validation in that edge case).
 
 ### Disabling Cart
 
@@ -1019,7 +1021,7 @@ bin/console cache:clear
 
 ## Pricing
 
-The plugin is free. Emporiqa is Pay-as-you-go: $0/month base + $0.25/conversation. New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. After the credit, the monthly cap defaults to $59 and is customer-adjustable from the billing dashboard. Enterprise option for catalogs over 30,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
+The plugin is free. Emporiqa is Pay-as-you-go: you pay only when the chat talks to a shopper. $0/month base + $0.25/conversation. New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. After the credit, the monthly cap defaults to $59 and is customer-adjustable from the billing dashboard. Enterprise option for catalogs over 30,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
 
 ## Support
 
