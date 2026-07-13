@@ -4,9 +4,11 @@ Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm
 
 The chat assistant reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and drives cart and checkout through the plugin's APIs.
 
-[![Emporiqa demo: recommends a product, handles an objection, and adds it to the cart](https://img.youtube.com/vi/as54_uvk038/maxresdefault.jpg)](https://www.youtube.com/watch?v=as54_uvk038)
+[![Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](docs/images/product-search.jpg)](https://demo.emporiqa.com)
 
-Watch the demo, or try it yourself on the [live demo store](https://demo.emporiqa.com).
+Try it yourself on the [live demo store](https://demo.emporiqa.com), or **watch the 30-second demo** (recommends, handles objections, closes):
+
+[![Watch the 30-second demo on YouTube: Emporiqa recommends a product, handles an objection, and adds it to the cart](https://img.youtube.com/vi/as54_uvk038/maxresdefault.jpg)](https://www.youtube.com/watch?v=as54_uvk038)
 
 Emporiqa accounts are free to start: $25 of signup credit (about 100 conversations) is auto-applied and no card is required at signup. After the credit, you pay only when the chat talks to a shopper: $0.25 per conversation, no monthly base fee.
 
