@@ -15,7 +15,8 @@
     ],
     "homepage": "https://emporiqa.com",
     "support": {
-        "issues": "https://gitlab.com/emporiqa/integrations/sylius/-/issues",
+        "issues": "https://github.com/emporiqa/sylius/issues",
+        "source": "https://github.com/emporiqa/sylius",
         "docs": "https://emporiqa.com/docs/sylius/"
     },
     "require": {

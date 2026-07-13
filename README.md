@@ -1,6 +1,6 @@
 # Emporiqa Sylius Plugin
 
-Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=gitlab&utm_medium=readme&utm_campaign=sylius_plugin), an AI chat assistant that acts as an online salesperson on your storefront. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks.
+Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), an AI chat assistant that acts as an online salesperson on your storefront. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks.
 
 The chat assistant reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and drives cart and checkout through the plugin's APIs.
 
@@ -35,7 +35,7 @@ Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, and 
 - PHP 8.1+
 - Sylius 1.12+ or 2.0+
 - Symfony 6.4+ or 7.x
-- An Emporiqa account ([sign up](https://emporiqa.com?utm_source=gitlab&utm_medium=readme&utm_campaign=sylius_plugin))
+- An Emporiqa account ([sign up](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin))
 
 ## Installation
 
@@ -1029,7 +1029,7 @@ The plugin is free. Emporiqa is Pay-as-you-go: you pay only when the chat talks 
 
 - **Integration overview**: [https://emporiqa.com/integrations/sylius/](https://emporiqa.com/integrations/sylius/)
 - **Documentation**: [https://emporiqa.com/docs/sylius/](https://emporiqa.com/docs/sylius/)
-- **Issues**: [https://gitlab.com/emporiqa/integrations/sylius/-/issues](https://gitlab.com/emporiqa/integrations/sylius/-/issues)
+- **Issues**: [https://github.com/emporiqa/sylius/issues](https://github.com/emporiqa/sylius/issues)
 - **Email**: [support@emporiqa.com](mailto:support@emporiqa.com)
 
 ## License
