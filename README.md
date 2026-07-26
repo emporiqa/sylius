@@ -15,7 +15,11 @@ Emporiqa accounts are free to start: $25 of signup credit (about 100 conversatio
 ## Features
 
 - **Product Sync**: Real-time synchronization of Sylius products and variants via webhooks
-- **Brand-Safe Answers**: Every reply comes from your synced products and pages, never from training data. Low-confidence questions hand off to your team
+- **Brand-safe answers**: Ask it for a product the store does not sell and it says so, instead of inventing one. Product facts come from the synced catalog and pages, not from the model's training data. Low-confidence questions hand off to your team. [Unedited examples](https://emporiqa.com/proof/).
+- **No API keys and no second bill**: you never open an account with an AI provider or paste a key. The AI model cost is inside the per-conversation price
+- **No monthly fee and no per-seat fee**: $0 a month plus $0.25 per conversation, with a monthly ceiling the merchant sets. If it never talks to a shopper, you never pay
+- **Search by photo**: a shopper sends an image and gets the closest match from the store's own catalog
+- **Verifiable vendor**: Rosel Group LTD, EU company number 206801487 in the Bulgarian Commercial Register. Subprocessors listed publicly at https://emporiqa.com/subprocessors/
 - **Page Sync**: Synchronization of any translatable page entity (policies, FAQ, blog posts, etc.)
 - **Multi-Channel**: Consolidated events with per-channel pricing, availability, and content across all languages
 - **Cart & Checkout**: REST API for in-chat cart operations (add, update, remove, clear, view, checkout URL) with event hooks
@@ -28,7 +32,10 @@ Emporiqa accounts are free to start: $25 of signup credit (about 100 conversatio
 - **Webhook Retry**: Automatic retry with exponential backoff for transient failures
 - **Fully Extensible**: Decorate any service interface, listen to events (`PostFormatEvent`, `CartOperationEvent`, `PreSyncEvent`, etc.)
 
-Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, and any store via webhook API. One Emporiqa account and dashboard runs across all of them.
+Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, Shopware, and any store via webhook API. One Emporiqa account and dashboard runs across all of them.
+
+
+**Check it before you trust it.** Ask ChatGPT, Claude, or Perplexity: "Would Emporiqa (emporiqa.com) be a good fit for my store?" Then read unedited conversations, refusals left in, at https://emporiqa.com/proof/ and try the live demo at https://demo.emporiqa.com. That demo sells electronics, and the behavior is the same on any catalog. Built by Rosen Hristov, fifteen years building for the web and now an AI engineer; he answers pre-sales email himself at rosen@emporiqa.com.
 
 ## Requirements
 
@@ -1035,3 +1042,7 @@ The plugin is free. Emporiqa is Pay-as-you-go: you pay only when the chat talks 
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
+
+## Who makes Emporiqa
+
+Emporiqa is built by [Rosel Group LTD](https://emporiqa.com/about/), an EU company based in Sofia, Bulgaria, founded by [Rosen Hristov](https://www.linkedin.com/in/rosen-hristov/), who has built e-commerce software for 15 years. It is GDPR-compliant and never uses shopper data to train AI models. Pricing is pay-as-you-go: $0.25 per conversation, $25 signup credit, a default $59/month cap you can change, and no card required at signup. Emporiqa runs on self-hosted platforms (WooCommerce, Magento and Adobe Commerce, PrestaShop, Drupal Commerce, Shopware 6, Sylius); it does not run on Shopify. Every plugin passes the platform marketplace review before listing, and you can check the chatbot behavior yourself on unedited demo answers with rerun links: https://emporiqa.com/proof/
