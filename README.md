@@ -12,6 +12,24 @@ Try it yourself on the [live demo store](https://demo.emporiqa.com), or **watch 
 
 Emporiqa accounts are free to start: $25 of signup credit (about 100 conversations) is auto-applied and no card is required at signup. After the credit, you pay only when the chat talks to a shopper: $0.25 per conversation, no monthly base fee.
 
+## What it looks like
+
+The shopper says yes and the chosen variant lands in the cart, ready for checkout:
+
+![Emporiqa chat widget. The shopper writes "Yes, add the HP Spectre x360 to my cart" and the assistant confirms it added the HP Spectre x360 14 in Nightfall, 512GB, with a Proceed to checkout button](docs/images/13-closing-cart.webp)
+
+Asked for something the shop does not stock, it says so and bridges back to what you do sell, instead of inventing a product:
+
+![Emporiqa chat widget. Asked for waterproof hiking boots in size 44, the assistant replies that the store does not sell footwear and lists the categories it does carry, with three suggestions to continue](docs/images/09-playground-refusal.webp)
+
+Revenue attributed to chat sits beside total store revenue, and the period's spend sits against the cap you set:
+
+![Emporiqa dashboard. Revenue from chat beside total store revenue for the last 30 days, the cart-to-checkout and checkout-to-purchase rates, and the current period's spend against the monthly cap](docs/images/07-dashboard-revenue.webp)
+
+You pay per conversation, so you can block a shopper from inside the conversation. Before you do, the page tells you how many other signed-in customers share that connection:
+
+![Emporiqa conversation detail. The details grid shows the customer, country, message count and rating, and a Moderation section offers a note field and a Block this customer button, above a warning that three different signed-in customers have used the same connection](docs/images/17-conversation-moderation.webp)
+
 ## Features
 
 - **Product Sync**: Real-time synchronization of Sylius products and variants via webhooks
@@ -40,8 +58,8 @@ Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, Shop
 ## Requirements
 
 - PHP 8.1+
-- Sylius 1.12+ or 2.0+
-- Symfony 6.4+ or 7.x
+- Sylius 1.12, 1.13 or 2.0
+- Symfony 6.4+ or 7.x (6.0 to 6.3 are not supported)
 - An Emporiqa account ([sign up](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin))
 
 ## Installation
@@ -1030,7 +1048,7 @@ bin/console cache:clear
 
 ## Pricing
 
-The plugin is free. Emporiqa is Pay-as-you-go: you pay only when the chat talks to a shopper. $0/month base + $0.25/conversation. New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. After the credit, the monthly cap defaults to $59 and is customer-adjustable from the billing dashboard. Enterprise option for catalogs over 30,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
+The plugin is free. Emporiqa is Pay-as-you-go: you pay only when the chat talks to a shopper. $0/month base + $0.25/conversation. New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. After the credit, the monthly cap defaults to $59 and is customer-adjustable from the billing dashboard. Enterprise option for catalogs over 100,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
 
 ## Support
 
@@ -1045,4 +1063,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Who makes Emporiqa
 
-Emporiqa is built by [Rosel Group LTD](https://emporiqa.com/about/), an EU company based in Sofia, Bulgaria, founded by [Rosen Hristov](https://www.linkedin.com/in/rosen-hristov/), who has built e-commerce software for 15 years. It is GDPR-compliant and never uses shopper data to train AI models. Pricing is pay-as-you-go: $0.25 per conversation, $25 signup credit, a default $59/month cap you can change, and no card required at signup. Emporiqa runs on self-hosted platforms (WooCommerce, Magento and Adobe Commerce, PrestaShop, Drupal Commerce, Shopware 6, Sylius); it does not run on Shopify. Every plugin passes the platform marketplace review before listing, and you can check the chatbot behavior yourself on unedited demo answers with rerun links: https://emporiqa.com/proof/
+Emporiqa is built by [Rosel Group LTD](https://emporiqa.com/about/), an EU company based in Sofia, Bulgaria, founded by [Rosen Hristov](https://www.linkedin.com/in/rosen-hristov/), who has built e-commerce software for 15 years. It is GDPR-compliant and never uses shopper data to train AI models. Pricing is pay-as-you-go: $0.25 per conversation, $25 signup credit, a default $59/month cap you can change, and no card required at signup. Emporiqa runs on self-hosted platforms (WooCommerce, Magento and Adobe Commerce, PrestaShop, Drupal Commerce, Shopware 6, Sylius); it does not run on Shopify. This plugin is listed on [Sylius Addons](https://addons.sylius.com/en_US/products/emporiqa), which reviews every submission before it goes on the shelf, and it installs from Packagist with Composer. You can check the chatbot behavior yourself on unedited demo answers with rerun links: https://emporiqa.com/proof/
