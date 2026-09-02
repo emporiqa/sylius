@@ -4,12 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [v1.10.1] - 2026-09-02
+
+### Fixed
+- **Composer no longer permits a Symfony version this bundle does not support.**
+  `symfony/security-bundle` was constrained to `^6.2 || ^7.0`, which allowed
+  Symfony 6.2 and 6.3 even though the README states, correctly, that 6.0 to 6.3
+  are not supported. `symfony/http-client` was already `^6.4`. The constraint is
+  now `^6.4 || ^7.0`, so a resolver cannot install a combination the project
+  documents as unsupported.
+
 ## [v1.10.0] - 2026-07-09
 
 ### Security
 - **Full syncs can no longer delete valid remote items after a partial
   failure.** `sync.complete` marks items unseen in the session as deleted on
-  the Emporiqa side, but it was sent regardless of batch outcomes — so one
+  the Emporiqa side, but it was sent regardless of batch outcomes, so one
   failed batch (a transient 5xx, a rate-limit burst, or a 400 on a malformed
   product) silently wiped the remaining, still-existing items from the
   Emporiqa index. `emporiqa:sync:products` and `emporiqa:sync:pages` now skip
@@ -18,7 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the behavior of the other Emporiqa integrations.
 - **Order tracking now always requires email verification.** The order
   lookup only checked the customer email when Emporiqa supplied one, and
-  Sylius order numbers are sequential — so a chat user could probe other
+  Sylius order numbers are sequential, so a chat user could probe other
   customers' orders by number alone. An order is now only returned when the
   request carries a verification email matching the order's customer.
 
@@ -67,7 +77,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     treated as `null` (no limit) rather than emitted verbatim, so a
     misconfigured attribute can never make a product un-orderable.
   - `available_for_order`: boolean derived from the product's `isEnabled()`
-    state. Distinct from stock — out-of-stock is still expressed via
+    state. Distinct from stock, because out-of-stock is still expressed via
     `stock_quantities` / `availability_statuses`.
   - `condition`: string (`new` / `used` / `refurbished`) or `null`, read from
     the `condition_attribute` attribute (default code `condition`).
@@ -81,7 +91,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **A configurable product whose variants are all out of stock was reported
   as available on the parent.** `formatParentProduct` called
   `getAvailabilityStatus($product)` with no variant, which only checks the
-  product's enabled flag — so the parent's `availability_statuses` read
+  product's enabled flag, so the parent's `availability_statuses` read
   `available` regardless of variant stock. The Emporiqa backend trusts the
   parent point's stored availability when filtering search results, so
   sold-out configurable products were surfaced and recommended, then failed
@@ -95,7 +105,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `variation-{id}` point. The Emporiqa backend updates exactly the
   identification_number it receives and never re-derives the parent, so a
   sellout of the last in-stock variant would update that variation but leave
-  the parent showing as available until the next full product save — the
+  the parent showing as available until the next full product save. The
   full-event fix above only corrected the full-sync path. `VariantStockFormatter`
   now also emits a `product-{id}` parent availability event (with the
   re-aggregated status and `null` stock, mirroring the full parent payload)
@@ -120,7 +130,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   per message, so queued `product.availability` events stacked up until the
   worker stopped (or were lost if it was killed). The queue now subscribes
   to `WorkerMessageHandledEvent` (flush after each handled message) and
-  `WorkerMessageFailedEvent` (discard pending events — the handler's Doctrine
+  `WorkerMessageFailedEvent` (discard pending events, because the handler's Doctrine
   transaction is rolled back, so the change never persisted). Hooks are
   registered only when `symfony/messenger` is installed.
 - **`product.availability` inventory-only detection now tolerates Gedmo
@@ -238,5 +248,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Prior history
 
-Earlier versions (v1.0.0 through v1.6.2) — see git tags for release
+Earlier versions (v1.0.0 through v1.6.2): see git tags for release
 history.

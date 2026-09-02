@@ -2,7 +2,7 @@
 
 Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), an AI chat assistant that acts as an online salesperson on your storefront. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks.
 
-The chat assistant reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and drives cart and checkout through the plugin's APIs.
+The chat reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and drives cart and checkout through the plugin's APIs. It answers in 65+ languages, whichever locale the shopper writes in.
 
 [![Emporiqa chat widget recommending wireless headphones from the store's catalog, with a product card showing price, stock, and an add-to-cart button](docs/images/product-search.jpg)](https://demo.emporiqa.com)
 
@@ -20,7 +20,7 @@ The shopper says yes and the chosen variant lands in the cart, ready for checkou
 
 Asked for something the shop does not stock, it says so and bridges back to what you do sell, instead of inventing a product:
 
-![Emporiqa chat widget. Asked for waterproof hiking boots in size 44, the assistant replies that the store does not sell footwear and lists the categories it does carry, with three suggestions to continue](docs/images/09-playground-refusal.webp)
+![Emporiqa chat widget. The opener says it is the store's AI assistant. Asked for waterproof hiking boots in size 44, it answers that the shop does not sell them and names what kind of shop it is, then asks what the shopper came in for, with two suggestions to continue](docs/images/09-playground-refusal.webp)
 
 Revenue attributed to chat sits beside total store revenue, and the period's spend sits against the cap you set:
 
@@ -33,10 +33,13 @@ You pay per conversation, so you can block a shopper from inside the conversatio
 ## Features
 
 - **Product Sync**: Real-time synchronization of Sylius products and variants via webhooks
-- **Brand-safe answers**: Ask it for a product the store does not sell and it says so, instead of inventing one. Product facts come from the synced catalog and pages, not from the model's training data. Low-confidence questions hand off to your team. [Unedited examples](https://emporiqa.com/proof/).
-- **No API keys and no second bill**: you never open an account with an AI provider or paste a key. The AI model cost is inside the per-conversation price
-- **No monthly fee and no per-seat fee**: $0 a month plus $0.25 per conversation, with a monthly ceiling the merchant sets. If it never talks to a shopper, you never pay
-- **Search by photo**: a shopper sends an image and gets the closest match from the store's own catalog
+- **Brand-safe answers**: Ask it for a product the store does not sell and it says so, instead of inventing one. Product facts come from the synced catalog and pages, not from the model's training data. When it should not answer alone it brings in a person. [Unedited examples](https://emporiqa.com/proof/).
+- **Live chat you can step into, without staffing a desk**: anyone on your team can open a live conversation and take it over, not only the ones where a shopper asked for help. While a person is in the conversation the chat stops and lets them talk, and whoever joins reads the whole conversation from the first message, with your saved replies to hand. Unlimited team members, no per-seat fee, and no second charge on a conversation a person joins
+- **Merchant-written pages**: the store owner writes a page in the Emporiqa dashboard and the chat retrieves it exactly as it retrieves a page synced from Sylius. Up to 25 pages per store, each holding up to 10 languages written by the merchant, scoped to the channels they pick. A sync from Sylius never overwrites them (they are excluded from the sync-time purge server-side). No file or document upload yet; a saved page reports Indexing, then Ready, and serves the previous version meanwhile.
+- **How the chat writes**: four tone presets (Standard, Friendly, Professional, Concise) under Settings and How the chat writes, plus five wording notes of up to 300 characters each, one applied everywhere and one each for recommending a product, answering a question about the shop, looking up an order, and small talk. Wording only. Stock, prices and order facts come from the synced data, and an instruction such as "never say something is out of stock" is deliberately ignored.
+- **AI disclosure in the opener**: the default greeting states that the shopper is talking to the store's AI assistant, in every locale the chat speaks, which is the EU AI Act disclosure. A custom greeting that drops the disclosure is rejected on save, and the Emporiqa terms (section 8.6) treat removing it, including through custom CSS or custom code, as a breach.
+- **The AI cost sits inside the price**: you never open an account with an AI provider or paste a key, and no second bill arrives from one
+- **You pay when it talks to a shopper**: $0 a month plus $0.25 per conversation, with a monthly ceiling the merchant sets. In a month with no conversations you pay nothing
 - **Verifiable vendor**: Rosel Group LTD, EU company number 206801487 in the Bulgarian Commercial Register. Subprocessors listed publicly at https://emporiqa.com/subprocessors/
 - **Page Sync**: Synchronization of any translatable page entity (policies, FAQ, blog posts, etc.)
 - **Multi-Channel**: Consolidated events with per-channel pricing, availability, and content across all languages
@@ -45,7 +48,7 @@ You pay per conversation, so you can block a shopper from inside the conversatio
 - **Order Completion**: Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
 - **Chat Widget**: Cache-safe embeddable chat widget with inline signed user tokens and currency/channel awareness
 - **Visual Search**: Shoppers upload a photo in the widget; the chatbot matches it against your synced Sylius catalog (no extra config required)
-- **Multi-language**: Syncs content in all configured Sylius locales with currency switcher support
+- **Multi-language**: Syncs content in all configured Sylius locales with currency switcher support. The chat itself answers in 65+ languages, independent of which locales you sync
 - **Console Commands**: Memory-efficient sync commands with batching, dry-run, and session management
 - **Webhook Retry**: Automatic retry with exponential backoff for transient failures
 - **Fully Extensible**: Decorate any service interface, listen to events (`PostFormatEvent`, `CartOperationEvent`, `PreSyncEvent`, etc.)
@@ -149,7 +152,7 @@ bin/console cache:clear
 | `media_base_path`        | string   | `'/media/image/'`    | Base path for product images. Customize for CDN or non-default media storage |
 | `brand_attribute_code`   | string   | `'brand'`            | Product attribute code used for brand/manufacturer data                      |
 | `min_order_quantity_attribute` | string | `'min_order_qty'` | Product attribute code holding the minimum order quantity. Stores without this attribute defined see a default minimum of 1. Listeners on `MinOrderQuantityEvent` may override the value. |
-| `max_order_quantity_attribute` | string | `'max_order_qty'` | Product attribute code holding the maximum order quantity per order. Sylius has no native max-per-order, so this is read from the configured attribute. Stores without it defined (or with a non-positive value) see no cap (`null`). The Emporiqa assistant never adds more than this value to the cart. |
+| `max_order_quantity_attribute` | string | `'max_order_qty'` | Product attribute code holding the maximum order quantity per order. Sylius has no native max-per-order, so this is read from the configured attribute. Stores without it defined (or with a non-positive value) see no cap (`null`). The chat never adds more than this value to the cart. |
 | `condition_attribute`    | string   | `'condition'`        | Product attribute code holding the item condition (`new`/`used`/`refurbished`). Products without it defined send `null`. |
 | `virtual_attribute`      | string   | `'virtual'`          | Product attribute code marking a product as virtual. Sylius has no native virtual flag, so this is read from the configured attribute. Products without it defined send `false`. |
 | `enabled_languages`      | string[] | `['en_US', 'de_DE']` | Sylius locale codes to sync                                                  |
@@ -322,7 +325,7 @@ The `images` field is resolved per variant: when a variant has its own images li
 A few fields are derived from optional product attributes since Sylius has no native equivalent:
 
 - `min_order_quantities`: per-channel dict mapping channel code to an integer minimum. Read from the product-level `min_order_quantity_attribute` attribute (default code `min_order_qty`), so **by default the same value is reported under every channel key** (the example above uses `6` for both). Stores that need genuinely per-channel minimums (e.g. a higher B2B floor) can produce them with a `MinOrderQuantityEvent` listener; that is the only way the per-channel values diverge.
-- `max_order_quantities`: per-channel dict mapping channel code to an integer cap or `null` (no limit). The cap is read from the product-level `max_order_quantity_attribute` attribute (default code `max_order_qty`, configurable like `min_order_qty`), so the same value is reported under every channel key. Unlike `min_order_quantities`, there is no per-channel override event. The Emporiqa assistant never adds more than this value to the cart.
+- `max_order_quantities`: per-channel dict mapping channel code to an integer cap or `null` (no limit). The cap is read from the product-level `max_order_quantity_attribute` attribute (default code `max_order_qty`, configurable like `min_order_qty`), so the same value is reported under every channel key. Unlike `min_order_quantities`, there is no per-channel override event. The chat never adds more than this value to the cart.
 - `available_for_order`: boolean derived from the product's `isEnabled()` state.
 - `condition`: string (`new`/`used`/`refurbished`) or `null`. Read from the `condition_attribute` product attribute (default code `condition`); `null` when the attribute is not set.
 - `is_virtual`: boolean read from the `virtual_attribute` product attribute (default code `virtual`); `false` when the attribute is not set.
@@ -1036,7 +1039,7 @@ The cart controller fails closed when Symfony's CSRF token manager isn't wired i
 1. Confirm the uploaded image is JPEG, PNG, WebP, or GIF. Other formats are rejected at upload
 2. Max upload size is 5 MB; larger files are rejected
 3. Check the browser console for upload errors (CORS, network)
-4. If matches are weak, verify your products actually sync with images. The chatbot describes the photo and searches by that description, so catalog image coverage and descriptive product names matter
+4. If matches are weak, verify that your products sync with images. The chatbot describes the photo and searches by that description, so catalog image coverage and descriptive product names matter
 
 ### Cache Issues
 
