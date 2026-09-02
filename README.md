@@ -13,7 +13,7 @@ Try it yourself on the [live demo store](https://demo.emporiqa.com), or watch th
 
 The chat runs on your storefront, reads your catalog and answers in the shopper's own words:
 
-![Emporiqa on a Sylius storefront. The shopper asks for wireless headphones under 500 euros with great sound, and the chat recommends the Sennheiser Momentum 4 at 379.00 euros, naming the 42 mm transducer and the 60 hours of battery with ANC, then offers to add it to the cart](docs/images/product-search.jpg)
+![Emporiqa chat widget open on a storefront, answering which laptop under 1200 euros suits a student editing video: it names the model and price, then flags the storage trade-off and offers to add it to the cart](docs/images/07-storefront.webp)
 
 ## Documentation
 
