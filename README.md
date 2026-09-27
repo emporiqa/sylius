@@ -5,15 +5,15 @@
 [![License](https://img.shields.io/packagist/l/emporiqa/sylius-plugin.svg)](LICENSE)
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D8.1-8892BF.svg)](composer.json)
 
-Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), an AI chat assistant that acts as an online salesperson on your storefront. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks.
+Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), an AI chatbot that works as an online salesperson on your storefront. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks.
 
 The chat reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and drives cart and checkout through the plugin's APIs. It answers in 65+ languages, whichever locale the shopper writes in.
 
-Try it yourself on the [live demo store](https://demo.emporiqa.com), or watch the [30-second demo](https://www.youtube.com/watch?v=as54_uvk038) (recommends, handles objections, closes).
+Try it yourself on the [live demo store](https://demo.emporiqa.com), or watch the [30-second demo](https://www.youtube.com/watch?v=y7ARSIUxuXI) (a shopper's question, the recommendation, the cart).
 
 The chat runs on your storefront, reads your catalog and answers in the shopper's own words:
 
-![Emporiqa chat widget open on a storefront, answering which laptop under 1200 euros suits a student editing video: it names the model and price, then flags the storage trade-off and offers to add it to the cart](docs/images/07-storefront.webp)
+![Emporiqa chat widget open on a storefront, answering which noise cancelling headphones under 400 euros suit long flights: it names the Sennheiser Momentum 4 for up to 60 hours with ANC and the Sony WH-1000XM5 at 250 g, and shows both as product cards with photo, price and a Cart button, above a message box with a photo button and a voice button](docs/images/lead-answer.webp)
 
 ## Documentation
 
@@ -28,7 +28,9 @@ Everything beyond this page lives in the full developer documentation at [empori
 - **Order Tracking**: API endpoint for order lookup with HMAC signature and replay protection
 - **Order Completion**: Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
 - **Chat Widget**: Cache-safe embeddable chat widget with inline signed user tokens and currency/channel awareness
-- **Visual Search**: Shoppers upload a photo in the widget; the chatbot matches it against your synced Sylius catalog (no extra config required)
+- **Visual Search**: Shoppers upload a photo in the widget; the chat matches it against your synced Sylius catalog (no extra config required)
+- **Voice Conversations** (optional, off by default): the shopper taps the microphone, speaks, and hears the answer read aloud while the product cards stay on screen. $0.25 more per voice conversation
+- **Widget Appearance**: up to four starter questions per language under the welcome message, your store's picture in the chat header and next to the chat's answers, and your team's own names and photos on their replies
 - **Multi-language**: Syncs content in all configured Sylius locales with currency switcher support. The chat itself answers in 65+ languages, independent of which locales you sync
 - **Console Commands**: Memory-efficient sync commands with batching, dry-run, and session management
 - **Webhook Retry**: Automatic retry with exponential backoff for transient failures
@@ -150,7 +152,7 @@ Product, variant and page changes reach Emporiqa automatically through Sylius re
 
 ## Pricing
 
-The plugin is free. Emporiqa is Pay-as-you-go: you pay only when the chat talks to a shopper. $0/month base + $0.25/conversation. New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. After the credit, the monthly cap defaults to $59 and is customer-adjustable from the billing dashboard. Enterprise option for catalogs over 100,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
+The plugin is free. Emporiqa is Pay-as-you-go: you pay only when the chat talks to a shopper. $0/month base + $0.25/conversation, +$0.25 per voice conversation (optional, off by default). New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. After the credit, the monthly cap defaults to $59 and is customer-adjustable from the billing dashboard. Enterprise option for catalogs over 100,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
 
 ## Support
 
