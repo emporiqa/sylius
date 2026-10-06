@@ -77,6 +77,95 @@ class ProductFormatterTest extends TestCase
         return $attributeValue;
     }
 
+    private function typedAttributeValue(string $code, string $type, mixed $value, ?string $locale = null, array $configuration = []): AttributeValueInterface
+    {
+        $attribute = $this->createMock(AttributeInterface::class);
+        $attribute->method('getCode')->willReturn($code);
+        $attribute->method('getType')->willReturn($type);
+        $attribute->method('getConfiguration')->willReturn($configuration);
+        $attribute->method('getTranslation')->willThrowException(new \RuntimeException('no translation'));
+
+        $attributeValue = $this->createMock(AttributeValueInterface::class);
+        $attributeValue->method('getAttribute')->willReturn($attribute);
+        $attributeValue->method('getValue')->willReturn($value);
+        $attributeValue->method('getLocaleCode')->willReturn($locale);
+
+        return $attributeValue;
+    }
+
+    /**
+     * Emporiqa takes attribute values as strings only: one non-string value
+     * refused the whole batch of 50 products (Sylius's own fixtures have a
+     * percent attribute). Each value is sent as the shop shows it, and a
+     * translatable attribute in the payload's own locale.
+     */
+    public function testAttributeValuesAreTextInThePayloadsLocale(): void
+    {
+        $locale = $this->createMock(LocaleInterface::class);
+        $locale->method('getCode')->willReturn('en_US');
+        $channel = $this->createChannel('DEFAULT', 'EUR', ['en_US', 'de_DE']);
+        $channel->method('getDefaultLocale')->willReturn($locale);
+
+        $translations = [];
+        foreach (['en_US' => 'Cap', 'de_DE' => 'Kappe'] as $code => $name) {
+            $translation = $this->createMock(ProductTranslationInterface::class);
+            $translation->method('getLocale')->willReturn($code);
+            $translation->method('getName')->willReturn($name);
+            $translation->method('getSlug')->willReturn(strtolower($name));
+            $translations[] = $translation;
+        }
+
+        $pricing = $this->createMock(ChannelPricingInterface::class);
+        $pricing->method('getPrice')->willReturn(1000);
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getChannelPricingForChannel')->willReturn($pricing);
+        $variant->method('isEnabled')->willReturn(true);
+
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(5);
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection($translations));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection([$variant]));
+        $product->method('getImages')->willReturn(new ArrayCollection());
+        $product->method('getAttributes')->willReturn(new ArrayCollection([
+            $this->typedAttributeValue('damage_reduction', 'percent', 0.1),
+            $this->typedAttributeValue('weight_g', 'integer', 250),
+            $this->typedAttributeValue('waterproof', 'checkbox', true),
+            $this->typedAttributeValue('released', 'date', new \DateTimeImmutable('2026-03-01')),
+            $this->typedAttributeValue('material', 'select', ['uuid-1', 'uuid-2'], null, ['choices' => [
+                'uuid-1' => ['en_US' => 'Cotton', 'de_DE' => 'Baumwolle'],
+                'uuid-2' => ['en_US' => 'Linen', 'de_DE' => 'Leinen'],
+            ]]),
+            $this->typedAttributeValue('care', 'text', 'Hand wash', 'en_US'),
+            $this->typedAttributeValue('care', 'text', 'Handwäsche', 'de_DE'),
+            $this->typedAttributeValue('fit', 'text', 'Regular', 'en_US'),
+            $this->typedAttributeValue('origin', 'text', 'France', 'fr_FR'),
+        ]));
+
+        $formatter = new ProductFormatter($this->router, new ChannelMappingResolver(), ['en_US', 'de_DE']);
+        $attributes = $formatter->format($product)[0]['data']['attributes']['DEFAULT'];
+
+        $this->assertSame([
+            'damage_reduction' => '10%',
+            'weight_g' => '250',
+            'waterproof' => 'yes',
+            'released' => '2026-03-01',
+            'material' => 'Cotton, Linen',
+            'care' => 'Hand wash',
+            'fit' => 'Regular',
+        ], $attributes['en_US']);
+        $this->assertSame('Baumwolle, Leinen', $attributes['de_DE']['material']);
+        $this->assertSame('Handwäsche', $attributes['de_DE']['care']);
+        $this->assertSame('Regular', $attributes['de_DE']['fit'], 'no German value: the channel default locale\'s, as the shop shows');
+        $this->assertArrayNotHasKey('origin', $attributes['en_US'], 'a value in another locale only');
+        foreach ($attributes as $values) {
+            foreach ($values as $value) {
+                $this->assertIsString($value);
+            }
+        }
+    }
+
     public function testFormatSimpleProduct(): void
     {
         $translation = $this->createMock(ProductTranslationInterface::class);
@@ -128,11 +217,62 @@ class ProductFormatterTest extends TestCase
         $this->assertNull($events[0]['data']['condition']);
         $this->assertFalse($events[0]['data']['is_virtual']);
 
+        // A catalog promotion's price is current, the price before it regular;
+        // Sylius's minimum_price (a promotion floor, the merchant's margin) is
+        // never sent.
+        $this->assertSame(
+            [['currency' => 'EUR', 'current_price' => 19.99, 'regular_price' => 24.99]],
+            $events[0]['data']['prices']['DEFAULT'],
+        );
+
         $prices = $events[0]['data']['prices']['DEFAULT'];
         $this->assertCount(1, $prices);
         $this->assertSame('EUR', $prices[0]['currency']);
         $this->assertSame(19.99, $prices[0]['current_price']);
         $this->assertSame(24.99, $prices[0]['regular_price']);
+    }
+
+    /**
+     * The parent row carries the price the product page shows first, which is
+     * the first ENABLED variant's (Sylius's DefaultProductVariantResolver),
+     * not the first variant's when that one is disabled.
+     */
+    public function testParentPriceIsTheFirstEnabledVariants(): void
+    {
+        $channel = $this->createChannel();
+        $variants = [];
+        foreach ([[10, 5000, false], [11, 3999, true]] as [$id, $price, $enabled]) {
+            $pricing = $this->createMock(ChannelPricingInterface::class);
+            $pricing->method('getPrice')->willReturn($price);
+            $pricing->method('getOriginalPrice')->willReturn(null);
+            $variant = $this->createMock(ProductVariantInterface::class);
+            $variant->method('getId')->willReturn($id);
+            $variant->method('getChannelPricingForChannel')->willReturn($pricing);
+            $variant->method('isEnabled')->willReturn($enabled);
+            $variant->method('getOptionValues')->willReturn(new ArrayCollection());
+            $variants[] = $variant;
+        }
+
+        $translation = $this->createMock(ProductTranslationInterface::class);
+        $translation->method('getLocale')->willReturn('en_US');
+        $translation->method('getName')->willReturn('Mug');
+        $translation->method('getSlug')->willReturn('mug');
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('getId')->willReturn(3);
+        $product->method('isEnabled')->willReturn(true);
+        $product->method('getTranslations')->willReturn(new ArrayCollection([$translation]));
+        $product->method('getChannels')->willReturn(new ArrayCollection([$channel]));
+        $product->method('getVariants')->willReturn(new ArrayCollection($variants));
+        $product->method('getEnabledVariants')->willReturn(new ArrayCollection([$variants[1]]));
+        $product->method('getAttributes')->willReturn(new ArrayCollection());
+        $product->method('getImages')->willReturn(new ArrayCollection());
+        $product->method('getOptions')->willReturn(new ArrayCollection());
+        $this->router->method('generate')->willReturn('https://shop.example.com/en_US/products/mug');
+
+        $events = $this->formatter->format($product);
+
+        $this->assertSame(39.99, $events[0]['data']['prices']['DEFAULT'][0]['current_price']);
+        $this->assertSame(50.0, $events[1]['data']['prices']['DEFAULT'][0]['current_price']);
     }
 
     public function testFormatProductWithVariants(): void
@@ -197,7 +337,10 @@ class ProductFormatterTest extends TestCase
 
         $this->assertSame('variation-10', $events[1]['data']['identification_number']);
         $this->assertSame('TSHIRT', $events[1]['data']['parent_sku']);
-        $this->assertFalse($events[1]['data']['is_parent']);
+        foreach (['descriptions', 'categories', 'brands', 'variation_attributes', 'is_parent'] as $inherited) {
+            $this->assertArrayNotHasKey($inherited, $events[1]['data'], 'Emporiqa takes ' . $inherited . ' from the parent');
+            $this->assertArrayHasKey($inherited, $events[0]['data']);
+        }
     }
 
     public function testVariantUsesItsOwnImagesWithProductFallback(): void
@@ -770,9 +913,8 @@ class ProductFormatterTest extends TestCase
         $this->assertSame(['Color'], $events[0]['data']['variation_attributes']['DEFAULT']['en_US']);
         $this->assertSame(['Farbe'], $events[0]['data']['variation_attributes']['DEFAULT']['de_DE']);
 
-        // Variant products have empty variation_attributes
-        $varAttrs1 = $events[1]['data']['variation_attributes'];
-        $this->assertInstanceOf(\stdClass::class, $varAttrs1);
+        // A variation does not send variation_attributes: Emporiqa fixes it.
+        $this->assertArrayNotHasKey('variation_attributes', $events[1]['data']);
     }
 
     public function testSimpleProductEmptyVariationAttributes(): void
@@ -912,12 +1054,11 @@ class ProductFormatterTest extends TestCase
         $this->assertSame(['Size'], $parent['variation_attributes']['B2B']['en_US']);
         $this->assertArrayNotHasKey('de_DE', $parent['variation_attributes']['B2B']);
 
-        // Variant categories also translatable per channel
+        // A variation's categories come from its parent on Emporiqa's side.
         $variantData = $events[1]['data'];
-        $this->assertSame(['Outerwear'], $variantData['categories']['WEB']['en_US']);
-        $this->assertSame(['Oberbekleidung'], $variantData['categories']['WEB']['de_DE']);
-        $this->assertSame(['Outerwear'], $variantData['categories']['B2B']['en_US']);
-        $this->assertInstanceOf(\stdClass::class, $variantData['variation_attributes']);
+        $this->assertArrayNotHasKey('categories', $variantData);
+        $this->assertArrayNotHasKey('variation_attributes', $variantData);
+        $this->assertSame(['WEB', 'B2B'], $variantData['channels']);
     }
 
     public function testFormatWithChannelMapping(): void
@@ -1205,7 +1346,11 @@ class ProductFormatterTest extends TestCase
         $this->assertSame('', $events[0]['data']['descriptions']['DEFAULT']['en_US']);
     }
 
-    public function testFormatWithJPYCurrencyNoDivision(): void
+    /**
+     * Sylius stores JPY in hundredths like every currency (MoneyType divisor
+     * 100), so 199900 is 1,999 JPY, never 199,900 JPY.
+     */
+    public function testFormatWithJPYCurrencyDividesSyliusHundredths(): void
     {
         $translation = $this->createMock(ProductTranslationInterface::class);
         $translation->method('getLocale')->willReturn('en_US');
@@ -1214,7 +1359,7 @@ class ProductFormatterTest extends TestCase
         $translation->method('getSlug')->willReturn('jpy');
 
         $channelPricing = $this->createMock(ChannelPricingInterface::class);
-        $channelPricing->method('getPrice')->willReturn(1999);
+        $channelPricing->method('getPrice')->willReturn(199900);
         $channelPricing->method('getOriginalPrice')->willReturn(null);
 
         $channel = $this->createChannel('JAPAN', 'JPY');

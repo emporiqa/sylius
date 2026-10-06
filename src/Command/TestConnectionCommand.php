@@ -13,6 +13,7 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 #[AsCommand(
     name: 'emporiqa:test-connection',
@@ -24,9 +25,13 @@ class TestConnectionCommand extends Command
         private WebhookSenderInterface $webhookSender,
         private ProductRepositoryInterface $productRepository,
         private ProductFormatterInterface $productFormatter,
+        private ?UrlGeneratorInterface $urlGenerator = null,
     ) {
         parent::__construct();
     }
+
+    /** Emporiqa refuses signatures more than 5 minutes off; warn well before. */
+    private const CLOCK_SKEW_WARN_SECONDS = 120;
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
@@ -71,8 +76,67 @@ class TestConnectionCommand extends Command
         }
 
         $this->renderSuccess($io, $result, $response);
+        $this->renderClockSkew($io, $result['clock_skew'] ?? null);
+        $this->renderReadyMadeRules($io, $response);
 
         return Command::SUCCESS;
+    }
+
+    private function renderClockSkew(SymfonyStyle $io, mixed $skew): void
+    {
+        if (is_int($skew) && abs($skew) > self::CLOCK_SKEW_WARN_SECONDS) {
+            $io->warning(sprintf(
+                'This server\'s clock is %d seconds %s Emporiqa\'s. Emporiqa refuses signatures more than 5 minutes off: set up time sync (NTP) on this server.',
+                abs($skew),
+                $skew > 0 ? 'ahead of' : 'behind',
+            ));
+        }
+    }
+
+    /**
+     * The Order status rule: where Emporiqa reaches this shop, and whether
+     * the rule is on, as the dry run reports it (rules_available / live_rules).
+     */
+    private function renderReadyMadeRules(SymfonyStyle $io, array $response): void
+    {
+        if (empty($response['rules_available'])) {
+            return;
+        }
+        $live = is_array($response['live_rules'] ?? null) ? $response['live_rules'] : [];
+        $orderStatusOn = in_array('order_status', $live, true);
+
+        $io->section('Ready-made rules');
+        $io->text(sprintf('Order status: <info>%s</info>', $orderStatusOn ? 'On' : 'Not added'));
+
+        $address = $this->orderStatusAddress();
+        if ($address === null) {
+            $io->warning('The Order status address could not be built. Import the plugin routes (config/routes/emporiqa.yaml) and set framework.router.default_uri to your shop\'s https address.');
+        } elseif (!str_starts_with($address, 'https://')) {
+            $io->text(sprintf('Order status address: %s', $address));
+            $io->warning('Emporiqa only calls https addresses. Set framework.router.default_uri to your shop\'s https address, then run this command again.');
+        } else {
+            $io->text(sprintf('Order status address: <info>%s</info>', $address));
+            $io->text('Emporiqa asks for this address when you add the Order status rule: paste it there, then click the link Emporiqa emails you to confirm it.');
+        }
+    }
+
+    /**
+     * The actions base URL: the route of the order-status action without the
+     * actions/order-status suffix Emporiqa appends.
+     */
+    private function orderStatusAddress(): ?string
+    {
+        if ($this->urlGenerator === null) {
+            return null;
+        }
+        try {
+            $url = $this->urlGenerator->generate('emporiqa_action_order_status', [], UrlGeneratorInterface::ABSOLUTE_URL);
+        } catch (\Throwable) {
+            return null;
+        }
+        $suffix = 'actions/order-status';
+
+        return str_ends_with($url, $suffix) ? substr($url, 0, -strlen($suffix)) : null;
     }
 
     private function findTestProduct(): ?ProductInterface

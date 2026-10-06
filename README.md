@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/packagist/l/emporiqa/sylius-plugin.svg)](LICENSE)
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D8.1-8892BF.svg)](composer.json)
 
-Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), an AI chatbot that works as an online salesperson on your storefront. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order tracking, and order completion webhooks.
+Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), an AI chatbot that works as an online salesperson on your storefront. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order status lookups, and order completion webhooks.
 
 The chat reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and drives cart and checkout through the plugin's APIs. It answers in 65+ languages, whichever locale the shopper writes in.
 
@@ -17,7 +17,7 @@ The chat runs on your storefront, reads your catalog and answers in the shopper'
 
 ## Documentation
 
-Everything beyond this page lives in the full developer documentation at [emporiqa.com/docs/sylius/](https://emporiqa.com/docs/sylius/). It covers the configuration reference, webhook events and payloads, the cart and checkout API, order tracking, console commands, customization, and troubleshooting.
+Everything beyond this page lives in the full developer documentation at [emporiqa.com/docs/sylius/](https://emporiqa.com/docs/sylius/). It covers the configuration reference, webhook events and payloads, the cart and checkout API, order status, console commands, customization, and troubleshooting.
 
 ## Features
 
@@ -25,13 +25,13 @@ Everything beyond this page lives in the full developer documentation at [empori
 - **Page Sync**: Synchronization of any translatable page entity (policies, FAQ, blog posts, etc.)
 - **Multi-Channel**: Consolidated events with per-channel pricing, availability, and content across all languages
 - **Cart & Checkout**: REST API for in-chat cart operations (add, update, remove, clear, view, checkout URL) with event hooks
-- **Order Tracking**: API endpoint for order lookup with HMAC signature and replay protection
+- **Order Status rule**: Emporiqa's ready-made Order status rule looks orders up through a signed, rate-limited endpoint
 - **Order Completion**: Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
-- **Chat Widget**: Cache-safe embeddable chat widget with inline signed user tokens and currency/channel awareness
+- **Chat Widget**: Cache-safe embeddable chat widget with currency/channel awareness; a signed-in shopper's token comes from an uncached endpoint, never from the page
 - **Visual Search**: Shoppers upload a photo in the widget; the chat matches it against your synced Sylius catalog (no extra config required)
 - **Voice Conversations** (optional, off by default): the shopper taps the microphone, speaks, and hears the answer read aloud while the product cards stay on screen. $0.15 more per voice conversation
 - **Widget Appearance**: up to four starter questions per language under the welcome message, your store's picture in the chat header and next to the chat's answers, and your team's own names and photos on their replies
-- **Multi-language**: Syncs content in all configured Sylius locales with currency switcher support. The chat itself answers in 65+ languages, independent of which locales you sync
+- **Multi-language**: Syncs content in all configured Sylius locales with currency switcher support. The chat itself answers in 65+ languages, independent of which locales you sync. A locale left out of `enabled_languages` is not synced, and its pages show no chat
 - **Console Commands**: Memory-efficient sync commands with batching, dry-run, and session management
 - **Webhook Retry**: Automatic retry with exponential backoff for transient failures
 - **Fully Extensible**: Decorate any service interface, listen to events (`PostFormatEvent`, `CartOperationEvent`, `PreSyncEvent`, etc.)
@@ -40,9 +40,14 @@ Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, Shop
 
 ## Requirements
 
-- PHP 8.1+
-- Sylius 1.12, 1.13 or 2.0
-- Symfony 6.4+ or 7.x (6.0 to 6.3 are not supported)
+- PHP 8.1+ (Sylius 2.3 itself needs PHP 8.3+, and Symfony 8 needs PHP 8.4+)
+- Sylius 1.12 or later 1.x, or Sylius 2.0 to 2.3
+- Symfony 6.4, 7.x or 8.x (6.0 to 6.3 are not supported)
+
+Checked on Sylius 2.3 with Symfony 8.1 and PHP 8.4, Sylius 2.2 with Symfony
+7.4 and PHP 8.3, and Sylius 1.12 with Symfony 6.4 and PHP 8.1. Sylius 1.12
+and 1.13 no longer get security fixes, and a current Composer refuses to
+install them unless their advisories are ignored: upgrade Sylius first.
 - An Emporiqa account ([sign up](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin))
 
 ## Installation
@@ -71,7 +76,7 @@ emporiqa:
     resource: '@EmporiqaPlugin/config/routes.yaml'
 ```
 
-This registers the order tracking endpoint, cart API endpoints, and user token endpoint. If you don't need some features, you can disable them individually in configuration.
+This registers the Order status endpoints, the cart API endpoints, and the customer token endpoint. If you don't need some features, you can disable them individually in configuration.
 
 ### Create Configuration
 
@@ -112,7 +117,7 @@ In your shop layout template (e.g. `templates/bundles/SyliusShopBundle/Layout/ba
 bin/console assets:install
 ```
 
-This copies the plugin's JavaScript files (`emporiqa-cart.js`) to `public/bundles/emporiqa/js/`.
+This copies the plugin's JavaScript files (`emporiqa-cart.js`, `emporiqa-customer-token.js`) to `public/bundles/emporiqaplugin/js/`.
 
 ### Clear Cache
 
@@ -137,6 +142,58 @@ SITE_URL=https://your-store.com
 ```
 
 Verify the connection with `bin/console emporiqa:test-connection`, then run a first full sync with `bin/console emporiqa:sync:all`. The [developer documentation](https://emporiqa.com/docs/sylius/) has the widget variants and the rest of the reference.
+
+## Order status
+
+Emporiqa's ready-made **Order status** rule is how the chat answers "where
+is my order?" from your Sylius orders.
+
+1. Set `framework.router.default_uri` to your shop's https address (the
+   address must be https).
+2. Run `bin/console emporiqa:test-connection`. Under Ready-made rules it
+   prints your Order status address (`https://your-store.com/emporiqa/api/`)
+   and whether the rule is On.
+3. In Emporiqa, add the Order status rule (Settings > Rules). It asks for
+   this address: paste it there, then click the link Emporiqa emails you to
+   confirm it.
+4. Try it with one of your recent order numbers and its email, then click
+   Go live.
+
+Shoppers who are not signed in prove an order with its number and email. A
+signed-in shopper is matched by their Sylius customer id.
+
+Once the order is proved, the chat can answer its status and tracking, and
+its details when the shopper asks: what was ordered, the totals, payment,
+shipping method and delivery time, and the shipping and billing addresses.
+
+To change that answer or add your own details, listen to
+`OrderStatusEvent` (`emporiqa.order_status`). It runs after the answer is
+filled. Put your own fields under `extra` (at most 3 levels deep, 30 keys,
+strings up to 500 characters):
+
+```php
+use Emporiqa\SyliusPlugin\Event\OrderStatusEvent;
+use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+
+#[AsEventListener(event: OrderStatusEvent::NAME)]
+final class GiftWrapOrderStatusListener
+{
+    public function __invoke(OrderStatusEvent $event): void
+    {
+        $data = $event->getData();
+        $data['extra']['gift_wrap'] = true;
+        $event->setData($data);
+    }
+}
+```
+
+The same address also answers `actions/customer-prices`, which gives
+Emporiqa the prices a signed-in customer pays. In Sylius core that is the
+channel price with its catalog promotions, the same as the synced price.
+
+The rate limits of these endpoints are counted in `cache.app`. If your shop
+runs on more than one web server, that pool must be shared (Redis or
+Memcached), not APCu.
 
 ## The chat tells shoppers it is an AI
 

@@ -12,11 +12,30 @@ services:
 
     Emporiqa\SyliusPlugin\Service\WebhookSenderInterface: '@Emporiqa\SyliusPlugin\Service\WebhookSender'
 
-    Emporiqa\SyliusPlugin\Service\WebhookEventQueue: ~
+    Emporiqa\SyliusPlugin\Service\WebhookEventQueue:
+        arguments:
+            $cache: '@cache.app'
 
     Emporiqa\SyliusPlugin\Service\ChannelMappingResolver:
         arguments:
             $channelRepository: '@?sylius.repository.channel'
+
+    Emporiqa\SyliusPlugin\Service\PriceEntryBuilder:
+        arguments:
+            $priceCalculator: '@?Sylius\Component\Core\Calculator\ProductVariantPricesCalculatorInterface'
+            $currencyConverter: '@?Sylius\Component\Currency\Converter\CurrencyConverterInterface'
+            $exchangeRates: '@?sylius.repository.exchange_rate'
+            $taxRateResolver: '@?Sylius\Component\Taxation\Resolver\TaxRateResolverInterface'
+            $taxCalculator: '@?Sylius\Component\Taxation\Calculator\CalculatorInterface'
+
+    Emporiqa\SyliusPlugin\Service\CustomerPrices:
+        arguments:
+            $customers: '@sylius.repository.customer'
+            $products: '@sylius.repository.product'
+            $variants: '@sylius.repository.product_variant'
+            $tokenStorage: '@?security.token_storage'
+            $zoneMatcher: '@?Sylius\Component\Addressing\Matcher\ZoneMatcherInterface'
+            $addressFactory: '@?sylius.factory.address'
 
     Emporiqa\SyliusPlugin\Service\ProductFormatter:
         arguments:
@@ -45,10 +64,6 @@ services:
 
     Emporiqa\SyliusPlugin\Service\PageFormatterInterface: '@Emporiqa\SyliusPlugin\Service\PageFormatter'
 
-    Emporiqa\SyliusPlugin\Service\OrderProvider: ~
-
-    Emporiqa\SyliusPlugin\Service\OrderProviderInterface: '@Emporiqa\SyliusPlugin\Service\OrderProvider'
-
     Emporiqa\SyliusPlugin\EventSubscriber\ProductEventSubscriber:
         arguments:
             $syncEnabled: '%emporiqa.sync.products%'
@@ -57,6 +72,8 @@ services:
         arguments:
             $syncEnabled: '%emporiqa.sync.products%'
             $stockSyncEnabled: '%emporiqa.sync.stock%'
+
+    Emporiqa\SyliusPlugin\EventListener\ChannelPricingDoctrineListener: ~
 
     Emporiqa\SyliusPlugin\EventListener\PageDoctrineListener:
         arguments:
@@ -71,6 +88,8 @@ services:
             $cartEnabled: '%emporiqa.cart.enabled%'
             $channelContext: '@?Sylius\Component\Channel\Context\ChannelContextInterface'
             $currencyContext: '@?Sylius\Component\Currency\Context\CurrencyContextInterface'
+            $enabledLanguages: '%emporiqa.enabled_languages%'
+            $urlGenerator: '@router'
 
     Emporiqa\SyliusPlugin\Command\SyncProductsCommand: ~
 
@@ -83,11 +102,26 @@ services:
     Emporiqa\SyliusPlugin\Command\TestConnectionCommand:
         arguments:
             $productRepository: '@sylius.repository.product'
+            $urlGenerator: '@router'
 
-    Emporiqa\SyliusPlugin\Controller\OrderTrackingController:
+    Emporiqa\SyliusPlugin\Service\ActionStateStore:
+        arguments:
+            $cache: '@cache.app'
+
+    Emporiqa\SyliusPlugin\Service\OrderStatusLookup:
+        arguments:
+            $orderRepository: '@sylius.repository.order'
+
+    Emporiqa\SyliusPlugin\Controller\ActionController:
         arguments:
             $webhookSecret: '%emporiqa.webhook_secret%'
-            $enabled: '%emporiqa.order_tracking.enabled%'
+            $storeId: '%emporiqa.store_id%'
+        tags: ['controller.service_arguments']
+
+    Emporiqa\SyliusPlugin\Controller\CustomerTokenController:
+        arguments:
+            $webhookSecret: '%emporiqa.webhook_secret%'
+            $storeId: '%emporiqa.store_id%'
         tags: ['controller.service_arguments']
 
     Emporiqa\SyliusPlugin\Controller\CartController:

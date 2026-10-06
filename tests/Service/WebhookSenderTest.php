@@ -6,6 +6,8 @@ namespace Emporiqa\SyliusPlugin\Tests\Service;
 
 use Emporiqa\SyliusPlugin\Event\PreWebhookSendEvent;
 use Emporiqa\SyliusPlugin\Service\WebhookSender;
+use Emporiqa\SyliusPlugin\EmporiqaPlugin;
+use Emporiqa\SyliusPlugin\Service\SignatureHelper;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
@@ -376,5 +378,64 @@ class WebhookSenderTest extends TestCase
         );
 
         $sender->sendBatch([['type' => 'original', 'data' => []]]);
+    }
+
+    public function testSendBatchCarriesBothSignaturesAndThePluginVersion(): void
+    {
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $captured = null;
+        $this->httpClient->method('request')->willReturnCallback(function ($method, $url, array $options) use (&$captured, $response) {
+            $captured = $options;
+            return $response;
+        });
+
+        $this->createSender('test-secret')->sendBatch([['type' => 'test', 'data' => []]]);
+
+        $body = $captured['body'];
+        $headers = $captured['headers'];
+        $this->assertSame(hash_hmac('sha256', $body, 'test-secret'), $headers['X-Webhook-Signature']);
+        $this->assertSame('ok', SignatureHelper::verifyHeader(
+            $headers['X-Emporiqa-Webhook-Signature'],
+            $body,
+            'test-secret',
+            'store-123',
+            SignatureHelper::LABEL_INBOUND,
+        ));
+        $this->assertSame('sylius/' . EmporiqaPlugin::VERSION, $headers['X-Emporiqa-Plugin-Version']);
+        $this->assertMatchesRegularExpression('/^sylius\/\d+(\.\d+){0,3}$/', $headers['X-Emporiqa-Plugin-Version']);
+    }
+
+    public function testEveryRetryIsSignedAgain(): void
+    {
+        $fail = $this->createMock(ResponseInterface::class);
+        $fail->method('getStatusCode')->willReturn(503);
+        $fail->method('getContent')->willReturn('');
+        $headers = [];
+        $this->httpClient->method('request')->willReturnCallback(function ($method, $url, array $options) use (&$headers, $fail) {
+            $headers[] = $options['headers']['X-Emporiqa-Webhook-Signature'];
+            return $fail;
+        });
+
+        $this->createSender()->sendBatch([['type' => 'test', 'data' => []]]);
+
+        // Built per attempt (a fresh t once a second has passed), never reused from a stale array.
+        $this->assertCount(3, $headers);
+        foreach ($headers as $header) {
+            $this->assertMatchesRegularExpression('/^t=\d+,v1=[0-9a-f]{64}$/', $header);
+        }
+    }
+
+    public function testDryRunReportsClockSkewFromTheDateHeader(): void
+    {
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $response->method('getContent')->willReturn('{"status":"dry_run"}');
+        $response->method('getHeaders')->willReturn(['date' => [gmdate('D, d M Y H:i:s', time() - 200) . ' GMT']]);
+        $this->httpClient->method('request')->willReturn($response);
+
+        $result = $this->createSender()->sendDryRun([['type' => 'test', 'data' => []]]);
+
+        $this->assertEqualsWithDelta(200, $result['clock_skew'], 2);
     }
 }

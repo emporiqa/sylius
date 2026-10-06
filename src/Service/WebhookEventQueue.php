@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Service;
 
+use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\Console\Event\ConsoleTerminateEvent;
@@ -43,18 +44,39 @@ use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
  * transaction is rolled back, so the queued change never persisted and must
  * not be emitted. These hooks are only registered when symfony/messenger is
  * installed (it is an optional dependency).
+ *
+ * Sending: product payloads are built at flush, once per product however many
+ * times it was saved in the request (queueBuild). order.completed goes first
+ * and is never skipped; one Emporiqa refuses is kept for 30 days and sent
+ * again on the order's next paid status (retryRefusedOrder). The rest goes
+ * in batches of at most BATCH_SIZE events, a product's parent and variations
+ * kept together, and after one failed batch the rest of this flush is
+ * dropped (the next full sync restores it) instead of waiting on every batch.
  */
 class WebhookEventQueue implements EventSubscriberInterface
 {
     /** @var array<string, array{type: string, data: array}> */
     private array $pendingEvents = [];
 
+    public const BATCH_SIZE = 50;
+
+    private const ORDER_RETRY_TTL_SECONDS = 2592000;
+
     /** @var array<string, string> First event type per dedup key */
     private array $firstTypes = [];
+
+    /** @var array<string, int> The queue() call each dedup key arrived with, to keep a product's events in one batch */
+    private array $groups = [];
+
+    private int $groupSeq = 0;
+
+    /** @var array<string, array{build: callable, created: bool}> */
+    private array $pendingBuilds = [];
 
     public function __construct(
         private WebhookSenderInterface $webhookSender,
         private ?LoggerInterface $logger = null,
+        private ?CacheItemPoolInterface $cache = null,
     ) {}
 
     public static function getSubscribedEvents(): array
@@ -72,10 +94,24 @@ class WebhookEventQueue implements EventSubscriberInterface
         return $events;
     }
 
+    /**
+     * Defer building a payload to the flush. The same key queued again keeps
+     * the latest builder, and `created` once any call said so.
+     *
+     * @param callable(bool $created): array $build returns the events
+     */
+    public function queueBuild(string $key, callable $build, bool $created = false): void
+    {
+        $created = $created || ($this->pendingBuilds[$key]['created'] ?? false);
+        $this->pendingBuilds[$key] = ['build' => $build, 'created' => $created];
+    }
+
     public function queue(array $events): void
     {
+        $group = ++$this->groupSeq;
         foreach ($events as $event) {
             $key = $this->dedupKey($event);
+            $this->groups[$key] ??= $group;
 
             $incomingIsAvailability = ($event['type'] ?? '') === 'product.availability';
             $existingType = ($this->pendingEvents[$key]['type'] ?? null);
@@ -136,27 +172,171 @@ class WebhookEventQueue implements EventSubscriberInterface
 
     public function flush(): void
     {
+        $this->runBuilds();
         if (empty($this->pendingEvents)) {
             return;
         }
 
-        $events = array_values($this->pendingEvents);
-        $this->pendingEvents = [];
-        $this->firstTypes = [];
+        $events = $this->pendingEvents;
+        $groups = $this->groups;
+        $this->clear();
 
+        $orders = [];
+        $rest = [];
+        foreach ($events as $key => $event) {
+            if (($event['type'] ?? '') === 'order.completed') {
+                $orders[] = $event;
+            } else {
+                $rest[$key] = $event;
+            }
+        }
+
+        foreach (array_chunk($orders, self::BATCH_SIZE) as $batch) {
+            if (!$this->send($batch)) {
+                $this->rememberRefusedOrders($batch);
+            }
+        }
+
+        $batches = $this->batches($rest, $groups);
+        foreach ($batches as $i => $batch) {
+            if (!$this->send($batch)) {
+                $skipped = array_sum(array_map('count', array_slice($batches, $i + 1)));
+                if ($skipped > 0) {
+                    $this->logger?->warning('Emporiqa did not accept a webhook batch; the remaining product and page webhooks of this request were not sent. Run emporiqa:sync:all to catch up.', [
+                        'skipped_events' => $skipped,
+                    ]);
+                }
+                break;
+            }
+        }
+    }
+
+    /**
+     * Send the stored order.completed of an order Emporiqa refused earlier,
+     * if any. Called on the order's next paid status.
+     */
+    public function retryRefusedOrder(string $orderId): void
+    {
+        if ($this->cache === null || $orderId === '') {
+            return;
+        }
         try {
-            $this->webhookSender->sendBatch($events);
+            $key = $this->orderRetryKey($orderId);
+            $item = $this->cache->getItem($key);
+            if (!$item->isHit() || !is_array($item->get())) {
+                return;
+            }
+            $this->queue([$item->get()]);
+            // Removed now; a second refusal stores it again at flush.
+            $this->cache->deleteItem($key);
         } catch (\Throwable $e) {
-            $eventIds = array_map(
-                fn (array $ev) => ($ev['type'] ?? '?') . ':' . ($ev['data']['identification_number'] ?? '?'),
-                $events,
-            );
+            $this->logger?->error('Failed to requeue a refused order.completed webhook', ['error' => $e->getMessage()]);
+        }
+    }
+
+    private function runBuilds(): void
+    {
+        $builds = $this->pendingBuilds;
+        $this->pendingBuilds = [];
+        foreach ($builds as $key => $build) {
+            try {
+                $this->queue(($build['build'])($build['created']));
+            } catch (\Throwable $e) {
+                $this->logger?->error('Failed to build a queued webhook payload', [
+                    'key' => $key,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Pack whole groups (one product's parent and variations) into batches of
+     * at most BATCH_SIZE events; a group larger than that is split.
+     *
+     * @param array<string, array> $events
+     * @param array<string, int> $groups
+     *
+     * @return list<list<array>>
+     */
+    private function batches(array $events, array $groups): array
+    {
+        $byGroup = [];
+        foreach ($events as $key => $event) {
+            $byGroup[$groups[$key] ?? 0][] = $event;
+        }
+
+        $batches = [];
+        $current = [];
+        foreach ($byGroup as $members) {
+            if ($current !== [] && count($current) + count($members) > self::BATCH_SIZE) {
+                $batches[] = $current;
+                $current = [];
+            }
+            foreach ($members as $event) {
+                if (count($current) >= self::BATCH_SIZE) {
+                    $batches[] = $current;
+                    $current = [];
+                }
+                $current[] = $event;
+            }
+        }
+        if ($current !== []) {
+            $batches[] = $current;
+        }
+
+        return $batches;
+    }
+
+    private function send(array $batch): bool
+    {
+        try {
+            return $this->webhookSender->sendBatch($batch);
+        } catch (\Throwable $e) {
             $this->logger?->error('Failed to flush webhook event queue', [
-                'events_count' => count($events),
-                'events' => $eventIds,
+                'events_count' => count($batch),
+                'events' => array_map(
+                    fn (array $ev) => ($ev['type'] ?? '?') . ':' . ($ev['data']['identification_number'] ?? $ev['data']['order_id'] ?? '?'),
+                    $batch,
+                ),
                 'error' => $e->getMessage(),
             ]);
+
+            return false;
         }
+    }
+
+    private function rememberRefusedOrders(array $batch): void
+    {
+        if ($this->cache === null) {
+            return;
+        }
+        foreach ($batch as $event) {
+            $orderId = (string) ($event['data']['order_id'] ?? '');
+            if ($orderId === '') {
+                continue;
+            }
+            try {
+                $item = $this->cache->getItem($this->orderRetryKey($orderId));
+                $item->set($event);
+                $item->expiresAfter(self::ORDER_RETRY_TTL_SECONDS);
+                $this->cache->save($item);
+            } catch (\Throwable $e) {
+                $this->logger?->error('Failed to keep a refused order.completed webhook for retry', ['error' => $e->getMessage()]);
+            }
+        }
+    }
+
+    private function orderRetryKey(string $orderId): string
+    {
+        return 'emporiqa_order_retry_' . hash('sha256', $orderId);
+    }
+
+    private function clear(): void
+    {
+        $this->pendingEvents = [];
+        $this->firstTypes = [];
+        $this->groups = [];
     }
 
     /**
@@ -186,13 +366,13 @@ class WebhookEventQueue implements EventSubscriberInterface
      */
     public function discardOnMessageFailed(WorkerMessageFailedEvent $event): void
     {
-        $this->pendingEvents = [];
-        $this->firstTypes = [];
+        $this->pendingBuilds = [];
+        $this->clear();
     }
 
     public function hasPending(): bool
     {
-        return !empty($this->pendingEvents);
+        return !empty($this->pendingEvents) || !empty($this->pendingBuilds);
     }
 
     /**
@@ -203,6 +383,6 @@ class WebhookEventQueue implements EventSubscriberInterface
      */
     public function hasPendingFor(string $identificationNumber): bool
     {
-        return isset($this->pendingEvents[$identificationNumber]);
+        return isset($this->pendingEvents[$identificationNumber]) || isset($this->pendingBuilds[$identificationNumber]);
     }
 }

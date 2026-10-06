@@ -647,8 +647,9 @@ class CartControllerTest extends TestCase
 
     public function testGetCartWithJPYCurrency(): void
     {
-        $orderItem = $this->createMockOrderItem(456, 1, 1999);
-        $cart = $this->createMockCart([$orderItem], 1999, 'JPY');
+        // Sylius stores JPY in hundredths too: 199900 is 1,999 JPY.
+        $orderItem = $this->createMockOrderItem(456, 1, 199900);
+        $cart = $this->createMockCart([$orderItem], 199900, 'JPY');
         $this->cartContext->method('getCart')->willReturn($cart);
         $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
 

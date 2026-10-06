@@ -15,6 +15,7 @@ use Sylius\Component\Core\Model\ProductVariantInterface;
 use Sylius\Component\Core\Repository\ProductRepositoryInterface;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 class TestConnectionCommandTest extends TestCase
 {
@@ -90,6 +91,77 @@ class TestConnectionCommandTest extends TestCase
         ];
 
         $this->webhookSender->method('sendDryRun')->willReturn($result);
+    }
+
+    private function runWithRules(array $responseOverrides, string $actionUrl = 'https://shop.example/emporiqa/api/actions/order-status', ?int $clockSkew = null): string
+    {
+        $this->productRepository->method('findBy')->willReturn([$this->createProduct()]);
+        $this->productFormatter->method('format')->willReturn([['type' => 'product.updated', 'data' => ['sku' => 'T']]]);
+        $this->webhookSender->method('sendDryRun')->willReturn([
+            'success' => true,
+            'status_code' => 200,
+            'url' => 'https://emporiqa.com/webhooks/sync/store-1/?dry_run=true',
+            'clock_skew' => $clockSkew,
+            'response' => array_merge(['status' => 'dry_run', 'events' => []], $responseOverrides),
+        ]);
+        $router = $this->createMock(UrlGeneratorInterface::class);
+        $router->method('generate')->with('emporiqa_action_order_status', [], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn($actionUrl);
+
+        $app = new Application();
+        $app->add(new TestConnectionCommand($this->webhookSender, $this->productRepository, $this->productFormatter, $router));
+        $tester = new CommandTester($app->find('emporiqa:test-connection'));
+        $tester->execute([]);
+        $this->assertSame(0, $tester->getStatusCode());
+
+        // Joined back up: SymfonyStyle wraps notes and prefixes each line with "!".
+        return preg_replace('/\s+/', ' ', str_replace("\n ! ", "\n", $tester->getDisplay()));
+    }
+
+    public function testShowsOrderStatusAddressWhenRulesAreAvailable(): void
+    {
+        $output = $this->runWithRules(['rules_available' => true, 'live_rules' => []]);
+
+        $this->assertStringContainsString('Order status: Not added', $output);
+        $this->assertStringContainsString('Order status address: https://shop.example/emporiqa/api/', $output);
+        $this->assertStringNotContainsString('actions/order-status', $output);
+        $this->assertStringContainsString('Emporiqa asks for this address when you add the Order status rule: paste it there, then click the link Emporiqa emails you to confirm it.', $output);
+        $this->assertStringNotContainsString('old order tracking', $output);
+    }
+
+    /**
+     * The older order tracking endpoint is gone, so there is nothing to switch off.
+     */
+    public function testOrderStatusOnSaysOnAndNothingAboutOldTracking(): void
+    {
+        $output = $this->runWithRules(['rules_available' => true, 'live_rules' => ['order_status']]);
+
+        $this->assertStringContainsString('Order status: On', $output);
+        $this->assertStringNotContainsString('order tracking', strtolower($output));
+    }
+
+    public function testNothingAboutRulesWhenEmporiqaDoesNotOfferThem(): void
+    {
+        $output = $this->runWithRules([]);
+
+        $this->assertStringNotContainsString('Ready-made rules', $output);
+    }
+
+    public function testPlainHttpAddressIsFlagged(): void
+    {
+        $output = $this->runWithRules(['rules_available' => true, 'live_rules' => []], 'http://localhost/emporiqa/api/actions/order-status');
+
+        $this->assertStringContainsString('Emporiqa only calls https addresses', $output);
+        $this->assertStringNotContainsString('Emporiqa asks for this address', $output);
+    }
+
+    public function testWarnsWhenTheClockIsMoreThanTwoMinutesOff(): void
+    {
+        $this->assertStringContainsString('130 seconds behind Emporiqa', $this->runWithRules([], clockSkew: -130));
+    }
+
+    public function testNoClockWarningWithinTwoMinutes(): void
+    {
+        $this->assertStringNotContainsString('clock', $this->runWithRules([], clockSkew: 90));
     }
 
     public function testSuccessfulDryRun(): void

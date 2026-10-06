@@ -1,0 +1,22 @@
+# Ready-made rules. The actions base URL is https://<shop>/emporiqa/api/;
+# Emporiqa appends the catalog suffixes actions/order-status,
+# actions/customer-prices and actions/verify.
+emporiqa_action_order_status:
+    path: /emporiqa/api/actions/order-status
+    controller: Emporiqa\SyliusPlugin\Controller\ActionController::orderStatus
+    methods: [POST]
+
+emporiqa_action_customer_prices:
+    path: /emporiqa/api/actions/customer-prices
+    controller: Emporiqa\SyliusPlugin\Controller\ActionController::customerPrices
+    methods: [POST]
+
+emporiqa_action_verify:
+    path: /emporiqa/api/actions/verify
+    controller: Emporiqa\SyliusPlugin\Controller\ActionController::verify
+    methods: [POST]
+
+emporiqa_customer_token:
+    path: /emporiqa/api/customer-token
+    controller: Emporiqa\SyliusPlugin\Controller\CustomerTokenController::token
+    methods: [POST]

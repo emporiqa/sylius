@@ -38,7 +38,6 @@ class EmporiqaExtension extends Extension
         $container->setParameter('emporiqa.sync.pages', $config['sync']['pages']);
         $container->setParameter('emporiqa.sync.stock', $config['sync']['stock']);
         $container->setParameter('emporiqa.page_entity_classes', $config['page_entity_classes']);
-        $container->setParameter('emporiqa.order_tracking.enabled', $config['order_tracking']['enabled']);
         $container->setParameter('emporiqa.cart.enabled', $config['cart']['enabled']);
 
         $loader = new YamlFileLoader($container, new FileLocator(dirname(__DIR__, 2) . '/config'));

@@ -21,7 +21,7 @@ class RecordingWebhookSender implements WebhookSenderInterface
     public array $batches = [];
 
     /** @param string[] $failingTypes */
-    public function __construct(private array $failingTypes = []) {}
+    public function __construct(private array $failingTypes = [], private ?string $lastError = null) {}
 
     public function send(string $event, array $data): bool
     {
@@ -53,7 +53,7 @@ class RecordingWebhookSender implements WebhookSenderInterface
 
     public function getLastError(): ?string
     {
-        return null;
+        return $this->lastError;
     }
 
     public function buildFriendlyError(array $result): string
@@ -206,5 +206,23 @@ class AbstractSyncCommandTest extends TestCase
 
         $this->assertSame(Command::SUCCESS, $tester->getStatusCode());
         $this->assertSame([], $sender->batches);
+    }
+
+    /**
+     * Refused at sync.start (an interrupted sync's session is still open):
+     * the reason is shown, items are still sent, and no sync.complete goes
+     * out, so nothing is deleted on Emporiqa's side.
+     */
+    public function testARefusedSessionSaysWhyAndDeletesNothing(): void
+    {
+        $sender = new RecordingWebhookSender(['sync.start'], 'Sync session already active');
+        $command = new FixtureSyncCommand($sender, $this->entities(2), [$this->productEvent()]);
+
+        $tester = new CommandTester($command);
+        $tester->execute([]);
+
+        $this->assertStringContainsString('Sync session already active', preg_replace('/\s+/', ' ', $tester->getDisplay()));
+        $this->assertContains('product.updated', $sender->sentTypes());
+        $this->assertNotContains('sync.complete', $sender->sentTypes());
     }
 }

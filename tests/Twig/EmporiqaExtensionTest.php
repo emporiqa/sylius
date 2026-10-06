@@ -36,6 +36,7 @@ class EmporiqaExtensionTest extends TestCase
         bool $cartEnabled = true,
         ?ChannelContextInterface $channelContext = null,
         ?CurrencyContextInterface $currencyContext = null,
+        array $enabledLanguages = [],
     ): EmporiqaExtension {
         return new EmporiqaExtension(
             $storeId,
@@ -47,6 +48,7 @@ class EmporiqaExtensionTest extends TestCase
             $cartEnabled,
             $channelContext,
             $currencyContext,
+            $enabledLanguages,
         );
     }
 
@@ -110,7 +112,7 @@ class EmporiqaExtensionTest extends TestCase
         $this->assertStringContainsString('language=de_DE', $url);
     }
 
-    public function testGetWidgetUrlIncludesUserToken(): void
+    public function testGetWidgetUrlNeverCarriesTheUserToken(): void
     {
         $request = $this->createMock(Request::class);
         $request->method('getLocale')->willReturn('en');
@@ -123,16 +125,9 @@ class EmporiqaExtensionTest extends TestCase
         $extension = $this->createExtension('store-123', 'https://api.emporiqa.com/webhook', 'secret');
         $url = $extension->getWidgetUrl();
 
-        $this->assertStringContainsString('user_id=', $url);
-
-        parse_str(parse_url($url, PHP_URL_QUERY), $params);
-        $this->assertArrayHasKey('user_id', $params);
-        $parts = explode('.', $params['user_id']);
-        $this->assertCount(2, $parts);
-
-        $decoded = json_decode(base64_decode(strtr($parts[0], '-_', '+/')), true);
-        $this->assertSame('user@example.com', $decoded['uid']);
-        $this->assertArrayHasKey('ts', $decoded);
+        // URLs end up in server logs and Referer headers.
+        $this->assertStringNotContainsString('user_id', $url);
+        $this->assertStringNotContainsString('user%40example.com', $url);
     }
 
     public function testRenderWidgetOutputsScriptTag(): void
@@ -161,6 +156,34 @@ class EmporiqaExtensionTest extends TestCase
         $html = $extension->renderWidget();
 
         $this->assertSame('', $html);
+    }
+
+    /**
+     * A locale that is not in enabled_languages is neither synced nor offered: its pages show no chat.
+     */
+    public function testUntickedLocaleRendersNoWidget(): void
+    {
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('fr_FR');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+
+        $extension = $this->createExtension(enabledLanguages: ['en_US', 'de_DE']);
+
+        $this->assertSame('', $extension->renderWidget());
+        $this->assertSame('', $extension->renderCartWidget());
+    }
+
+    public function testTickedLocaleRendersTheWidget(): void
+    {
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('de_DE');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+        $this->security->method('getUser')->willReturn(null);
+
+        $extension = $this->createExtension(enabledLanguages: ['en_US', 'de_DE']);
+
+        $this->assertStringContainsString('language=de_DE', $extension->renderWidget());
+        $this->assertStringContainsString('language=de_DE', $extension->renderCartWidget());
     }
 
     public function testGetWidgetUrlFallsBackWhenNoRequest(): void
@@ -203,7 +226,7 @@ class EmporiqaExtensionTest extends TestCase
         $this->assertSame('', $html);
     }
 
-    public function testRenderWidgetIncludesUserTokenForLoggedInUser(): void
+    public function testRenderWidgetKeepsTheTokenOffThePageForLoggedInUser(): void
     {
         $request = $this->createMock(Request::class);
         $request->method('getLocale')->willReturn('en');
@@ -216,7 +239,19 @@ class EmporiqaExtensionTest extends TestCase
         $extension = $this->createExtension('store-123', 'https://api.emporiqa.com/webhook', 'secret');
         $html = $extension->renderWidget();
 
-        $this->assertStringContainsString('user_id=', $html);
+        // A full-page cache could hand the page to another customer.
+        $this->assertStringNotContainsString('user_id', $html);
+        $this->assertStringContainsString('window.emporiqaTokenConfig = {"url":"/emporiqa/api/customer-token","authenticated":true}', $html);
+        $this->assertStringContainsString('emporiqa-customer-token.js?v=', $html);
+    }
+
+    public function testRenderWidgetTellsTheTokenScriptAGuestNeedsNoRequest(): void
+    {
+        $this->security->method('getUser')->willReturn(null);
+
+        $html = $this->createExtension()->renderWidget();
+
+        $this->assertStringContainsString('"authenticated":false', $html);
     }
 
     public function testRenderWidgetOmitsUserIdWhenNoSecret(): void
@@ -491,7 +526,9 @@ class EmporiqaExtensionTest extends TestCase
         $html = $extension->renderCartWidget();
 
         $this->assertStringContainsString('"authenticated":true', $html);
-        $this->assertStringContainsString('user_id=', $html);
+        $this->assertStringNotContainsString('user_id', $html);
+        $this->assertStringContainsString('emporiqa-cart.js?v=', $html);
+        $this->assertStringContainsString('emporiqa-customer-token.js?v=', $html);
     }
 
     public function testRenderWidgetWithNullSecurity(): void
@@ -548,5 +585,30 @@ class EmporiqaExtensionTest extends TestCase
         parse_str(parse_url($url, PHP_URL_QUERY), $params);
         $this->assertSame('', $params['currency']);
         $this->assertSame('', $params['channel']);
+    }
+
+    public function testTheTokenUrlComesFromTheRouterForSubPathInstalls(): void
+    {
+        $request = Request::create('/shop/en_US/');
+        $request->setLocale('en_US');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+        $router = $this->createMock(\Symfony\Component\Routing\Generator\UrlGeneratorInterface::class);
+        $router->method('generate')->with('emporiqa_customer_token')->willReturn('/shop/emporiqa/api/customer-token');
+
+        $extension = new EmporiqaExtension(
+            'test-store',
+            'https://api.emporiqa.com/webhook',
+            'test-secret',
+            $this->requestStack,
+            new ChannelMappingResolver(),
+            $this->security,
+            true,
+            null,
+            null,
+            [],
+            $router,
+        );
+
+        $this->assertStringContainsString('"url":"/shop/emporiqa/api/customer-token"', $extension->renderWidget());
     }
 }

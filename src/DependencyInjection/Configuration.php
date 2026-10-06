@@ -85,13 +85,13 @@ class Configuration implements ConfigurationInterface
                     ->defaultValue([])
                     ->info('FQCNs of page entities implementing PageInterface (empty = page sync disabled)')
                 ->end()
+                // Kept so a config from 1.10.x still loads; the older order
+                // tracking endpoint is gone and this setting does nothing.
                 ->arrayNode('order_tracking')
-                    ->addDefaultsIfNotSet()
+                    ->setDeprecated('emporiqa/sylius-plugin', '1.11.0', 'The "%node%" option does nothing since the older order tracking endpoint was removed; remove it from your configuration.')
+                    ->ignoreExtraKeys(false)
                     ->children()
-                        ->booleanNode('enabled')
-                            ->defaultTrue()
-                            ->info('Enable order tracking API endpoint')
-                        ->end()
+                        ->booleanNode('enabled')->end()
                     ->end()
                 ->end()
                 ->arrayNode('cart')

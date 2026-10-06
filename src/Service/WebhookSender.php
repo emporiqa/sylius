@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Service;
 
+use Emporiqa\SyliusPlugin\EmporiqaPlugin;
 use Emporiqa\SyliusPlugin\Event\PreWebhookSendEvent;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
@@ -62,11 +63,6 @@ class WebhookSender implements WebhookSenderInterface
         $payload = json_encode(['events' => $events], JSON_THROW_ON_ERROR);
         $url = rtrim($this->webhookUrl, '/') . '/' . $this->storeId . '/';
 
-        $headers = [
-            'Content-Type' => 'application/json',
-            'X-Webhook-Signature' => hash_hmac('sha256', $payload, $this->webhookSecret),
-        ];
-
         $lastError = '';
         $lastResult = null;
         $retryDelayMs = null;
@@ -78,8 +74,10 @@ class WebhookSender implements WebhookSenderInterface
             $retryDelayMs = null;
 
             try {
+                // Signed per attempt: Emporiqa answers a scheme-2 signature it
+                // already accepted with "duplicate", so a retry needs a fresh t.
                 $response = $this->httpClient->request('POST', $url, [
-                    'headers' => $headers,
+                    'headers' => $this->buildHeaders($payload),
                     'body' => $payload,
                     'timeout' => $this->timeout,
                 ]);
@@ -154,10 +152,7 @@ class WebhookSender implements WebhookSenderInterface
         $payload = json_encode(['events' => $events], JSON_THROW_ON_ERROR);
         $url = rtrim($this->webhookUrl, '/') . '/' . $this->storeId . '/?dry_run=true';
 
-        $headers = [
-            'Content-Type' => 'application/json',
-            'X-Webhook-Signature' => hash_hmac('sha256', $payload, $this->webhookSecret),
-        ];
+        $headers = $this->buildHeaders($payload);
 
         try {
             $response = $this->httpClient->request('POST', $url, [
@@ -175,6 +170,7 @@ class WebhookSender implements WebhookSenderInterface
                 'status_code' => $statusCode,
                 'url' => $url,
                 'response' => $decoded ?? $body,
+                'clock_skew' => $this->clockSkew($response),
             ];
         } catch (TransportExceptionInterface | HttpExceptionInterface $e) {
             return [
@@ -200,10 +196,7 @@ class WebhookSender implements WebhookSenderInterface
             ],
         ], JSON_THROW_ON_ERROR);
 
-        $headers = [
-            'Content-Type' => 'application/json',
-            'X-Webhook-Signature' => hash_hmac('sha256', $payload, $this->webhookSecret),
-        ];
+        $headers = $this->buildHeaders($payload);
 
         try {
             $response = $this->httpClient->request('POST', $url, [
@@ -225,6 +218,38 @@ class WebhookSender implements WebhookSenderInterface
                 'url' => $url,
             ];
         }
+    }
+
+    /**
+     * Both signature schemes while a platform that knows only the old header
+     * may still receive this, plus the plugin version.
+     *
+     * @return array<string, string>
+     */
+    private function buildHeaders(string $payload): array
+    {
+        return [
+            'Content-Type' => 'application/json',
+            'X-Webhook-Signature' => hash_hmac('sha256', $payload, $this->webhookSecret),
+            'X-Emporiqa-Webhook-Signature' => SignatureHelper::buildHeader(
+                SignatureHelper::deriveKey($this->webhookSecret, SignatureHelper::LABEL_INBOUND, $this->storeId),
+                $payload,
+            ),
+            'X-Emporiqa-Plugin-Version' => 'sylius/' . EmporiqaPlugin::VERSION,
+        ];
+    }
+
+    /**
+     * Seconds this server's clock is off Emporiqa's, from the response Date
+     * header; null when there is none. Emporiqa refuses signatures more than
+     * 5 minutes off.
+     */
+    private function clockSkew(ResponseInterface $response): ?int
+    {
+        $date = $response->getHeaders(false)['date'][0] ?? null;
+        $remote = is_string($date) ? strtotime($date) : false;
+
+        return $remote === false ? null : time() - $remote;
     }
 
     public function getLastError(): ?string

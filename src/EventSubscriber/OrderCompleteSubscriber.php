@@ -12,14 +12,16 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
- * Queues order.completed webhook when checkout completes.
+ * Queues order.completed webhook when checkout completes, and sends again one
+ * Emporiqa refused when the order's payment reaches paid.
  *
  * Subscribes to both:
- * - Symfony Workflow events (Sylius 2.x)
+ * - Symfony Workflow events (Sylius 2.x, and 1.13 configured for workflow)
  * - Winzou State Machine events (Sylius 1.x)
  *
- * Only the active state machine engine will dispatch events;
- * the other subscription is simply never triggered.
+ * Winzou dispatches one generic post-transition event for every graph and
+ * transition, with the order on the state machine rather than a subject, so
+ * that handler filters by graph and transition itself.
  */
 class OrderCompleteSubscriber implements EventSubscriberInterface
 {
@@ -34,18 +36,53 @@ class OrderCompleteSubscriber implements EventSubscriberInterface
         return [
             // Sylius 2.x — Symfony Workflow
             'workflow.sylius_order_checkout.completed.complete' => ['onOrderComplete', 50],
+            'workflow.sylius_order_payment.completed.pay' => ['onOrderPaid', 50],
             // Sylius 1.x — Winzou State Machine
-            'winzou.state_machine.sylius_order_checkout.post_transition.complete' => ['onOrderComplete', 50],
+            'winzou.state_machine.post_transition' => ['onWinzouTransition', 50],
         ];
+    }
+
+    public function onWinzouTransition(object $event): void
+    {
+        if (!method_exists($event, 'getStateMachine') || !method_exists($event, 'getTransition')) {
+            return;
+        }
+        $stateMachine = $event->getStateMachine();
+        $order = $stateMachine->getObject();
+        if (!$order instanceof OrderInterface) {
+            return;
+        }
+        $route = $stateMachine->getGraph() . '.' . $event->getTransition();
+        if ($route === 'sylius_order_checkout.complete') {
+            $this->queueCompleted($order);
+        } elseif ($route === 'sylius_order_payment.pay') {
+            $this->retryRefused($order);
+        }
+    }
+
+    public function onOrderPaid(object $event): void
+    {
+        $order = method_exists($event, 'getSubject') ? $event->getSubject() : null;
+        if ($order instanceof OrderInterface) {
+            $this->retryRefused($order);
+        }
+    }
+
+    private function retryRefused(OrderInterface $order): void
+    {
+        $this->webhookQueue->retryRefusedOrder((string) ($order->getNumber() ?? $order->getId()));
     }
 
     public function onOrderComplete(object $event): void
     {
         $order = method_exists($event, 'getSubject') ? $event->getSubject() : null;
-        if (!$order instanceof OrderInterface) {
-            return;
+        if ($order instanceof OrderInterface) {
+            $this->queueCompleted($order);
         }
+    }
 
+    private function queueCompleted(OrderInterface $order): void
+    {
         try {
             $this->sendOrderCompletedWebhook($order);
         } catch (\Exception $e) {

@@ -43,7 +43,6 @@ class ConfigurationTest extends TestCase
         $this->assertTrue($config['sync']['pages']);
         $this->assertTrue($config['sync']['stock']);
         $this->assertSame([], $config['page_entity_classes']);
-        $this->assertTrue($config['order_tracking']['enabled']);
         $this->assertTrue($config['cart']['enabled']);
     }
 
@@ -144,24 +143,18 @@ class ConfigurationTest extends TestCase
         ], $config['page_entity_classes']);
     }
 
-    public function testOrderTrackingConfiguration(): void
+    /**
+     * A 1.10.x config still naming the removed order tracking loads, so an
+     * upgrade does not break the container.
+     */
+    public function testAnOldOrderTrackingSettingStillLoads(): void
     {
-        $config = $this->processor->processConfiguration($this->configuration, [
-            array_merge(self::REQUIRED_CONFIG, [
-                'order_tracking' => ['enabled' => false],
-            ]),
-        ]);
-
-        $this->assertFalse($config['order_tracking']['enabled']);
-    }
-
-    public function testOrderTrackingDefaultsToEnabled(): void
-    {
-        $config = $this->processor->processConfiguration($this->configuration, [
-            self::REQUIRED_CONFIG,
-        ]);
-
-        $this->assertTrue($config['order_tracking']['enabled']);
+        foreach ([true, false] as $enabled) {
+            $config = $this->processor->processConfiguration($this->configuration, [
+                array_merge(self::REQUIRED_CONFIG, ['order_tracking' => ['enabled' => $enabled]]),
+            ]);
+            $this->assertTrue($config['cart']['enabled']);
+        }
     }
 
     public function testCartDefaultsToEnabled(): void

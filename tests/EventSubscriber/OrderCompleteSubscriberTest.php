@@ -8,6 +8,7 @@ use Emporiqa\SyliusPlugin\EventSubscriber\OrderCompleteSubscriber;
 use Emporiqa\SyliusPlugin\Service\WebhookEventQueue;
 use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Psr\Log\LoggerInterface;
 use Sylius\Component\Core\Model\OrderInterface;
 use Sylius\Component\Core\Model\OrderItemInterface;
@@ -149,5 +150,104 @@ class OrderCompleteSubscriberTest extends TestCase
         $this->subscriber->onOrderComplete($event);
 
         $this->assertTrue($this->webhookQueue->hasPending());
+    }
+
+    /**
+     * Winzou's TransitionEvent shape: one generic event per transition, the
+     * order on the state machine, not a subject.
+     */
+    private static function winzouEvent(object $order, string $graph, string $transition): object
+    {
+        $stateMachine = new class($order, $graph) {
+            public function __construct(private object $object, private string $graph) {}
+
+            public function getObject(): object
+            {
+                return $this->object;
+            }
+
+            public function getGraph(): string
+            {
+                return $this->graph;
+            }
+        };
+
+        return new class($stateMachine, $transition) {
+            public function __construct(private object $stateMachine, private string $transition) {}
+
+            public function getStateMachine(): object
+            {
+                return $this->stateMachine;
+            }
+
+            public function getTransition(): string
+            {
+                return $this->transition;
+            }
+        };
+    }
+
+    private function simpleOrder(string $number = '000000009'): OrderInterface
+    {
+        $order = $this->createMock(OrderInterface::class);
+        $order->method('getNumber')->willReturn($number);
+        $order->method('getTotal')->willReturn(1000);
+        $order->method('getCurrencyCode')->willReturn('EUR');
+        $order->method('getItems')->willReturn(new \Doctrine\Common\Collections\ArrayCollection());
+
+        return $order;
+    }
+
+    public function testSubscribesToWinzouGenericPostTransition(): void
+    {
+        // Winzou never dispatches graph-specific event names.
+        $events = OrderCompleteSubscriber::getSubscribedEvents();
+
+        $this->assertArrayHasKey('winzou.state_machine.post_transition', $events);
+        $this->assertArrayNotHasKey('winzou.state_machine.sylius_order_checkout.post_transition.complete', $events);
+        $this->assertArrayHasKey('workflow.sylius_order_payment.completed.pay', $events);
+    }
+
+    public function testWinzouCheckoutCompleteQueuesTheOrder(): void
+    {
+        $this->subscriber->onWinzouTransition(self::winzouEvent($this->simpleOrder(), 'sylius_order_checkout', 'complete'));
+
+        $this->assertTrue($this->webhookQueue->hasPending());
+    }
+
+    public function testWinzouOtherTransitionsAreIgnored(): void
+    {
+        $this->subscriber->onWinzouTransition(self::winzouEvent($this->simpleOrder(), 'sylius_order_checkout', 'select_shipping'));
+        $this->subscriber->onWinzouTransition(self::winzouEvent($this->simpleOrder(), 'sylius_order_shipping', 'ship'));
+        $this->subscriber->onWinzouTransition(self::winzouEvent(new \stdClass(), 'sylius_order_checkout', 'complete'));
+
+        $this->assertFalse($this->webhookQueue->hasPending());
+    }
+
+    public function testRefusedOrderIsResentWhenPaid(): void
+    {
+        $accept = false;
+        $sent = 0;
+        $sender = $this->createMock(WebhookSenderInterface::class);
+        $sender->method('sendBatch')->willReturnCallback(function () use (&$accept, &$sent) {
+            ++$sent;
+            return $accept;
+        });
+        $queue = new WebhookEventQueue($sender, null, new ArrayAdapter());
+        $subscriber = new OrderCompleteSubscriber($queue, $this->requestStack, $this->logger);
+        $order = $this->simpleOrder();
+
+        $subscriber->onOrderComplete(new CompletedEvent($order, new Marking()));
+        $queue->flush();
+        $this->assertSame(1, $sent);
+
+        $accept = true;
+        $subscriber->onWinzouTransition(self::winzouEvent($order, 'sylius_order_payment', 'pay'));
+        $queue->flush();
+        $this->assertSame(2, $sent);
+
+        $subscriber->onOrderPaid(new CompletedEvent($order, new Marking()));
+        $queue->flush();
+        $this->assertSame(2, $sent);
     }
 }

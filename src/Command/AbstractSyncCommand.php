@@ -78,7 +78,10 @@ abstract class AbstractSyncCommand extends Command
         if (!$noSession && !$dryRun) {
             $sessionId = $this->startSyncSession($entityName, $io);
             if (!$sessionId) {
-                $io->warning('Failed to start sync session, continuing without session');
+                $io->warning(sprintf(
+                    'Could not start a sync session (%s). Syncing without one: everything is sent, but items deleted from the shop stay in Emporiqa until a sync with a session completes. A session left open by an interrupted sync expires after 10 minutes.',
+                    $this->webhookSender->getLastError() ?? 'no answer from Emporiqa',
+                ));
             }
         }
 

@@ -1,5 +1,5 @@
-emporiqa_order_tracking_routes:
-    resource: routes/order_tracking.yaml
-
 emporiqa_cart_routes:
     resource: routes/cart.yaml
+
+emporiqa_action_routes:
+    resource: routes/actions.yaml

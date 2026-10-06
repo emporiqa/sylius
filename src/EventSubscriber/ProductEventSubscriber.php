@@ -52,21 +52,7 @@ class ProductEventSubscriber implements EventSubscriberInterface
             return;
         }
 
-        try {
-            $events = $this->formatter->format($product);
-            foreach ($events as &$webhookEvent) {
-                $webhookEvent['type'] = 'product.created';
-            }
-            unset($webhookEvent);
-            $events = $this->dispatchPostFormat($events, $product);
-
-            $this->webhookQueue->queue($events);
-        } catch (\Throwable $e) {
-            $this->logger?->error('Failed to queue product create webhook', [
-                'product_id' => $product->getId(),
-                'error' => $e->getMessage(),
-            ]);
-        }
+        $this->queueProduct($product, true);
     }
 
     public function onProductUpdate(ResourceControllerEvent $event): void
@@ -84,16 +70,7 @@ class ProductEventSubscriber implements EventSubscriberInterface
             return;
         }
 
-        try {
-            $events = $this->formatter->format($product);
-            $events = $this->dispatchPostFormat($events, $product);
-            $this->webhookQueue->queue($events);
-        } catch (\Throwable $e) {
-            $this->logger?->error('Failed to queue product update webhook', [
-                'product_id' => $product->getId(),
-                'error' => $e->getMessage(),
-            ]);
-        }
+        $this->queueProduct($product);
     }
 
     public function onProductDelete(ResourceControllerEvent $event): void
@@ -142,16 +119,7 @@ class ProductEventSubscriber implements EventSubscriberInterface
             return;
         }
 
-        try {
-            $events = $this->formatter->format($product);
-            $this->webhookQueue->queue($events);
-        } catch (\Throwable $e) {
-            $this->logger?->error('Failed to queue variant create webhook', [
-                'variant_id' => $variant->getId(),
-                'product_id' => $product->getId(),
-                'error' => $e->getMessage(),
-            ]);
-        }
+        $this->queueProduct($product);
     }
 
     public function onVariantUpdate(ResourceControllerEvent $event): void
@@ -174,16 +142,7 @@ class ProductEventSubscriber implements EventSubscriberInterface
             return;
         }
 
-        try {
-            $events = $this->formatter->format($product);
-            $this->webhookQueue->queue($events);
-        } catch (\Throwable $e) {
-            $this->logger?->error('Failed to queue variant update webhook', [
-                'variant_id' => $variant->getId(),
-                'product_id' => $product->getId(),
-                'error' => $e->getMessage(),
-            ]);
-        }
+        $this->queueProduct($product);
     }
 
     public function onVariantDelete(ResourceControllerEvent $event): void
@@ -216,6 +175,41 @@ class ProductEventSubscriber implements EventSubscriberInterface
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * A product whose channel price changed outside a resource form: a
+     * catalog promotion starting, ending or being reapplied (Sylius writes
+     * the prices from a Messenger handler, so no resource event fires).
+     */
+    public function onChannelPriceChanged(ProductInterface $product): void
+    {
+        if ($this->syncEnabled && !$this->isSyncCancelled($product, 'product', 'update')) {
+            $this->queueProduct($product);
+        }
+    }
+
+    /**
+     * The payload is built when the queue flushes, after the response, once
+     * per product however many of its variants were saved in the request.
+     */
+    private function queueProduct(ProductInterface $product, bool $created = false): void
+    {
+        $this->webhookQueue->queueBuild(
+            'product-' . $product->getId(),
+            function (bool $created) use ($product): array {
+                $events = $this->formatter->format($product);
+                if ($created) {
+                    foreach ($events as &$webhookEvent) {
+                        $webhookEvent['type'] = 'product.created';
+                    }
+                    unset($webhookEvent);
+                }
+
+                return $this->dispatchPostFormat($events, $product);
+            },
+            $created,
+        );
     }
 
     private function isSyncCancelled(object $entity, string $entityType, string $operation): bool

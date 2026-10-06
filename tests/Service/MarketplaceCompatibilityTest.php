@@ -313,12 +313,14 @@ class MarketplaceCompatibilityTest extends TestCase
         $this->assertSame('variation-10', $vd['identification_number']);
         $this->assertSame('LAPTOP-BLUE-M', $vd['sku']);
         $this->assertSame('LAPTOP', $vd['parent_sku']);
-        $this->assertFalse($vd['is_parent']);
+        $this->assertArrayNotHasKey('is_parent', $vd);
         $this->assertSame(42, $vd['stock_quantities']['WEB']);
         $this->assertSame('available', $vd['availability_statuses']['WEB']);
 
-        // Variant variation_attributes must be empty object (not array)
-        $this->assertInstanceOf(\stdClass::class, $vd['variation_attributes']);
+        // Inherited from the parent on Emporiqa's side, so not sent.
+        foreach (['descriptions', 'categories', 'brands', 'variation_attributes'] as $inherited) {
+            $this->assertArrayNotHasKey($inherited, $vd);
+        }
 
         // Variant attributes include option values merged with product attributes
         $this->assertArrayHasKey('Color', $vd['attributes']['WEB']['en_US']);
@@ -965,15 +967,10 @@ class MarketplaceCompatibilityTest extends TestCase
         $this->assertIsArray($parent['variation_attributes']['WEB']['de_DE']);
 
         $v1 = $decoded['events'][1]['data'];
-        $this->assertFalse($v1['is_parent']);
+        $this->assertArrayNotHasKey('is_parent', $v1);
         $this->assertSame('ROUNDTRIP', $v1['parent_sku']);
         $this->assertSame(4, $v1['stock_quantities']['WEB']);
-
-        // variation_attributes on variants serializes to {} (empty object)
-        $rawJson = json_encode($events[1]['data']['variation_attributes']);
-        $this->assertSame('{}', $rawJson);
-        // After decode it becomes empty associative array
-        $this->assertEmpty($decoded['events'][1]['data']['variation_attributes']);
+        $this->assertArrayNotHasKey('variation_attributes', $v1);
     }
 
     // ============================================================

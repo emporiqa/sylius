@@ -144,8 +144,11 @@ class ProductEventSubscriberTest extends TestCase
 
         $this->logger->expects($this->once())->method('error');
 
-        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
+        $queue = new WebhookEventQueue($this->createMock(WebhookSenderInterface::class), $this->logger);
+        $subscriber = new ProductEventSubscriber($queue, $this->formatter, true, $this->logger, $this->eventDispatcher);
         $subscriber->onProductCreate($event);
+        // The payload is built at flush, after the response.
+        $queue->flush();
     }
 
     public function testIgnoresNonProductSubjects(): void
@@ -281,8 +284,10 @@ class ProductEventSubscriberTest extends TestCase
         $this->formatter->method('format')->willThrowException(new \RuntimeException('Format failed'));
         $this->logger->expects($this->once())->method('error');
 
-        $subscriber = new ProductEventSubscriber($this->webhookQueue, $this->formatter, true, $this->logger, $this->eventDispatcher);
+        $queue = new WebhookEventQueue($this->createMock(WebhookSenderInterface::class), $this->logger);
+        $subscriber = new ProductEventSubscriber($queue, $this->formatter, true, $this->logger, $this->eventDispatcher);
         $subscriber->onVariantCreate($event);
+        $queue->flush();
     }
 
     public function testPreSyncEventCanCancelVariantSync(): void

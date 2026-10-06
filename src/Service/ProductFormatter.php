@@ -7,6 +7,8 @@ namespace Emporiqa\SyliusPlugin\Service;
 use Emporiqa\SyliusPlugin\Event\MinOrderQuantityEvent;
 use Emporiqa\SyliusPlugin\Trait\TranslationHelperTrait;
 use Psr\Log\LoggerInterface;
+use Sylius\Component\Attribute\Model\AttributeValueInterface;
+use Sylius\Component\Channel\Model\ChannelInterface as BaseChannelInterface;
 use Sylius\Component\Core\Model\ChannelInterface;
 use Sylius\Component\Core\Model\ProductImageInterface;
 use Sylius\Component\Core\Model\ProductInterface;
@@ -36,7 +38,10 @@ class ProductFormatter implements ProductFormatterInterface
         private string $maxOrderQuantityAttribute = 'max_order_qty',
         private string $conditionAttribute = 'condition',
         private string $virtualAttribute = 'virtual',
-    ) {}
+        private ?PriceEntryBuilder $priceEntries = null,
+    ) {
+        $this->priceEntries ??= new PriceEntryBuilder();
+    }
 
     public function format(ProductInterface $product): array
     {
@@ -138,7 +143,7 @@ class ProductFormatter implements ProductFormatterInterface
                 $descriptions[$empChannelKey][$lang] = strip_tags($translation->getDescription() ?? '');
                 $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
                 $categories[$empChannelKey][$lang] = $this->getCategoryNamesForLocale($product, $locale);
-                $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale) ?: new \stdClass();
+                $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale, $channel) ?: new \stdClass();
             }
 
             $brands[$empChannelKey] = $this->getBrandValue($product) ?? '';
@@ -180,7 +185,8 @@ class ProductFormatter implements ProductFormatterInterface
 
     private function formatParentProduct(ProductInterface $product): array
     {
-        $defaultVariant = $product->getVariants()->first() ?: null;
+        // The variant the product page shows first: the first enabled one by position.
+        $defaultVariant = $product->getEnabledVariants()->first() ?: $product->getVariants()->first() ?: null;
 
         $channelKeys = [];
         $names = [];
@@ -217,7 +223,7 @@ class ProductFormatter implements ProductFormatterInterface
                 $descriptions[$empChannelKey][$lang] = strip_tags($translation->getDescription() ?? '');
                 $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
                 $categories[$empChannelKey][$lang] = $this->getCategoryNamesForLocale($product, $locale);
-                $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale) ?: new \stdClass();
+                $attributes[$empChannelKey][$lang] = $this->getProductAttributes($product, $locale, $channel) ?: new \stdClass();
                 $variationAttributes[$empChannelKey][$lang] = $this->getVariationAttributeNames($product, $locale);
             }
 
@@ -263,14 +269,16 @@ class ProductFormatter implements ProductFormatterInterface
         ];
     }
 
+    /**
+     * A variation carries only what is its own. Emporiqa takes descriptions,
+     * categories and brands from the parent, and fixes is_parent and
+     * variation_attributes, so they are not built or sent.
+     */
     private function formatVariant(ProductVariantInterface $variant, ProductInterface $product): array
     {
         $channelKeys = [];
         $names = [];
-        $descriptions = [];
         $links = [];
-        $categories = [];
-        $brands = [];
         $prices = [];
         $availabilityStatuses = [];
         $stockQuantities = [];
@@ -299,17 +307,14 @@ class ProductFormatter implements ProductFormatterInterface
                 }
 
                 $names[$empChannelKey][$lang] = $variantName;
-                $descriptions[$empChannelKey][$lang] = strip_tags($translation?->getDescription() ?? '');
                 $links[$empChannelKey][$lang] = $this->generateProductUrl($product, $locale);
-                $categories[$empChannelKey][$lang] = $this->getCategoryNamesForLocale($product, $locale);
                 $mergedAttrs = array_merge(
-                    $this->getProductAttributes($product, $locale),
+                    $this->getProductAttributes($product, $locale, $channel),
                     $variantOptionAttrs,
                 );
                 $attributes[$empChannelKey][$lang] = $mergedAttrs ?: new \stdClass();
             }
 
-            $brands[$empChannelKey] = $this->getBrandValue($product) ?? '';
             $prices[$empChannelKey] = $this->getChannelPrices($channel, $variant);
             $availabilityStatuses[$empChannelKey] = $this->getAvailabilityStatus($product, $variant);
             $stockQuantities[$empChannelKey] = $this->getStockQuantity($variant);
@@ -325,10 +330,7 @@ class ProductFormatter implements ProductFormatterInterface
                 'sku' => $variant->getCode() ?? '',
                 'channels' => $channelKeys,
                 'names' => $names,
-                'descriptions' => $descriptions,
                 'links' => $links,
-                'categories' => $categories,
-                'brands' => $brands,
                 'prices' => $prices,
                 'availability_statuses' => $availabilityStatuses,
                 'stock_quantities' => $stockQuantities,
@@ -340,8 +342,6 @@ class ProductFormatter implements ProductFormatterInterface
                 'images' => $images,
                 'attributes' => $attributes,
                 'parent_sku' => $product->getCode() ?? '',
-                'is_parent' => false,
-                'variation_attributes' => new \stdClass(),
             ],
         ];
     }
@@ -383,44 +383,15 @@ class ProductFormatter implements ProductFormatterInterface
         return array_values($intersected);
     }
 
+    /**
+     * The guest price: Sylius core has no customer-group prices, so every
+     * shopper in a channel pays the channel price (catalog promotions
+     * included). No minimum_price: Sylius's is the floor a catalog promotion
+     * may not go below, the merchant's margin setting, not a price a shopper pays.
+     */
     private function getChannelPrices(ChannelInterface $channel, ?ProductVariantInterface $variant): array
     {
-        if ($variant === null) {
-            return [];
-        }
-
-        $channelPricing = $variant->getChannelPricingForChannel($channel);
-        if ($channelPricing === null) {
-            return [];
-        }
-
-        $currencyCode = $channel->getBaseCurrency()?->getCode() ?? '';
-
-        $currentPrice = $channelPricing->getPrice() !== null
-            ? CurrencyHelper::toCurrencyUnits($channelPricing->getPrice(), $currencyCode)
-            : null;
-        $regularPrice = $channelPricing->getOriginalPrice() !== null
-            ? CurrencyHelper::toCurrencyUnits($channelPricing->getOriginalPrice(), $currencyCode)
-            : null;
-        if ($regularPrice === null && $currentPrice !== null) {
-            $regularPrice = $currentPrice;
-        }
-
-        if ($currentPrice === null) {
-            return [];
-        }
-
-        $priceData = [
-            'currency' => $currencyCode,
-            'current_price' => $currentPrice,
-            'regular_price' => $regularPrice,
-        ];
-
-        if (method_exists($channelPricing, 'getMinimumPrice') && $channelPricing->getMinimumPrice() !== null) {
-            $priceData['minimum_price'] = CurrencyHelper::toCurrencyUnits($channelPricing->getMinimumPrice(), $currencyCode);
-        }
-
-        return [$priceData];
+        return $this->priceEntries->entries($channel, $variant);
     }
 
     private function getAvailabilityStatus(ProductInterface $product, ?ProductVariantInterface $variant = null): string
@@ -537,21 +508,7 @@ class ProductFormatter implements ProductFormatterInterface
 
         foreach ($product->getAttributes() as $attributeValue) {
             if (strtolower($attributeValue->getAttribute()?->getCode() ?? '') === $targetCode) {
-                $value = $attributeValue->getValue();
-
-                if (is_string($value)) {
-                    return $value;
-                }
-
-                if (is_array($value)) {
-                    return implode(', ', array_filter($value, 'is_string'));
-                }
-
-                if (is_scalar($value)) {
-                    return (string) $value;
-                }
-
-                return null;
+                return $this->attributeText($attributeValue, (string) $attributeValue->getLocaleCode());
             }
         }
 
@@ -630,22 +587,96 @@ class ProductFormatter implements ProductFormatterInterface
         return $attributes;
     }
 
-    private function getProductAttributes(ProductInterface $product, string $locale): array
+    /**
+     * The product's attributes in one locale, as the shop shows them: a
+     * translatable attribute's value in that locale, else in the channel's
+     * default locale (the shop's fallback); every value as text, since
+     * Emporiqa takes strings only.
+     *
+     * @return array<string, string>
+     */
+    private function getProductAttributes(ProductInterface $product, string $locale, ?BaseChannelInterface $channel = null): array
     {
-        $attributes = [];
+        $fallback = $channel instanceof ChannelInterface ? $channel->getDefaultLocale()?->getCode() : null;
+        $best = [];
         foreach ($product->getAttributes() as $attributeValue) {
             $attribute = $attributeValue->getAttribute();
-            if ($attribute) {
-                try {
-                    $name = $attribute->getTranslation($locale)?->getName() ?? $attribute->getCode();
-                } catch (\Exception) {
-                    $name = $attribute->getCode();
-                }
-                $attributes[$name] = $attributeValue->getValue();
+            if (!$attribute) {
+                continue;
+            }
+            $valueLocale = $attributeValue->getLocaleCode();
+            $rank = match (true) {
+                $valueLocale === $locale => 0,
+                $valueLocale === null => 1,
+                $valueLocale === $fallback => 2,
+                default => null,
+            };
+            $code = (string) $attribute->getCode();
+            if ($rank !== null && (!isset($best[$code]) || $rank < $best[$code][0])) {
+                $best[$code] = [$rank, $attributeValue];
+            }
+        }
+
+        $attributes = [];
+        foreach ($best as [, $attributeValue]) {
+            $attribute = $attributeValue->getAttribute();
+            try {
+                $name = $attribute->getTranslation($locale)?->getName() ?? $attribute->getCode();
+            } catch (\Exception) {
+                $name = $attribute->getCode();
+            }
+            $text = $this->attributeText($attributeValue, $locale);
+            if ($name !== null && $text !== null) {
+                $attributes[$name] = $text;
             }
         }
 
         return $attributes;
+    }
+
+    /**
+     * An attribute value as the shop shows it: a select by its choice labels,
+     * a percent as "10%", a date as Y-m-d, a checkbox as yes or no. Null when
+     * empty.
+     */
+    private function attributeText(AttributeValueInterface $attributeValue, string $locale): ?string
+    {
+        $value = $attributeValue->getValue();
+        $attribute = $attributeValue->getAttribute();
+        $type = $attribute?->getType();
+
+        if ($type === 'select' && is_array($value)) {
+            $choices = $attribute->getConfiguration()['choices'] ?? [];
+            $labels = [];
+            foreach ($value as $key) {
+                $choice = is_scalar($key) ? ($choices[$key] ?? $key) : null;
+                $label = is_array($choice) ? ($choice[$locale] ?? reset($choice)) : $choice;
+                if (is_scalar($label) && (string) $label !== '') {
+                    $labels[] = (string) $label;
+                }
+            }
+            $value = $labels;
+        } elseif ($type === 'percent' && is_numeric($value)) {
+            return rtrim(rtrim(number_format((float) $value * 100, 2, '.', ''), '0'), '.') . '%';
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format($type === 'datetime' ? 'Y-m-d H:i' : 'Y-m-d');
+        }
+        if (is_bool($value)) {
+            return $value ? 'yes' : 'no';
+        }
+        if (is_array($value)) {
+            $value = implode(', ', array_filter(array_map(
+                fn ($item) => is_scalar($item) ? (string) $item : '',
+                $value,
+            ), fn (string $item) => $item !== ''));
+        }
+        if (is_scalar($value) && (string) $value !== '') {
+            return (string) $value;
+        }
+
+        return null;
     }
 
     /**
@@ -812,21 +843,7 @@ class ProductFormatter implements ProductFormatterInterface
                 continue;
             }
 
-            $value = $attributeValue->getValue();
-
-            if (is_string($value)) {
-                return $value !== '' ? $value : null;
-            }
-            if (is_array($value)) {
-                $joined = implode(', ', array_filter($value, 'is_string'));
-
-                return $joined !== '' ? $joined : null;
-            }
-            if (is_scalar($value)) {
-                return (string) $value;
-            }
-
-            return null;
+            return $this->attributeText($attributeValue, (string) $attributeValue->getLocaleCode());
         }
 
         return null;

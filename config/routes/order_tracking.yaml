@@ -1,4 +1,0 @@
-emporiqa_order_tracking:
-    path: /emporiqa/api/order/tracking
-    controller: Emporiqa\SyliusPlugin\Controller\OrderTrackingController::track
-    methods: [POST]
