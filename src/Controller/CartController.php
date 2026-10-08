@@ -12,6 +12,7 @@ use Sylius\Component\Core\Model\OrderInterface;
 use Sylius\Component\Core\Model\OrderItemInterface;
 use Sylius\Component\Core\Model\ProductVariantInterface;
 use Sylius\Component\Core\Repository\ProductVariantRepositoryInterface;
+use Sylius\Component\Inventory\Checker\AvailabilityCheckerInterface;
 use Sylius\Component\Order\Context\CartContextInterface;
 use Sylius\Component\Order\Context\CartNotFoundException;
 use Sylius\Component\Order\Modifier\OrderItemQuantityModifierInterface;
@@ -41,6 +42,8 @@ class CartController
         private ?EventDispatcherInterface $eventDispatcher = null,
         private bool $enabled = true,
         private string $mediaBasePath = '/media/image/',
+        private ?AvailabilityCheckerInterface $availabilityChecker = null,
+        private int $quantityLimit = 9999,
     ) {}
 
     private function guardEnabled(): ?JsonResponse
@@ -127,6 +130,10 @@ class CartController
         }
 
         try {
+            // Every item is checked before the cart is changed, so a refused
+            // item never leaves the ones before it half added.
+            $lines = [];
+            $added = [];
             foreach ($items as $item) {
                 $rawId = $item['variation_id'] ?? null;
                 if (!$rawId) {
@@ -136,8 +143,8 @@ class CartController
                     );
                 }
 
-                $variant = $this->resolveVariant($rawId);
-                if (!$variant) {
+                $variant = $this->resolveVariant($rawId, true);
+                if (!$variant || !$this->isSellableInCart($variant, $cart)) {
                     return new JsonResponse(
                         ['success' => false, 'error' => 'Variant ' . $rawId . ' not found'],
                         Response::HTTP_NOT_FOUND,
@@ -145,7 +152,17 @@ class CartController
                 }
 
                 $quantity = max(1, (int) ($item['quantity'] ?? 1));
+                $variantId = (int) $variant->getId();
+                $added[$variantId] = ($added[$variantId] ?? 0) + $quantity;
+                $inCart = $this->findOrderItemByVariant($cart, $variantId)?->getQuantity() ?? 0;
+                if ($error = $this->quantityError($variant, $quantity, $inCart + $added[$variantId])) {
+                    return $error;
+                }
 
+                $lines[] = [$variant, $quantity];
+            }
+
+            foreach ($lines as [$variant, $quantity]) {
                 $existingItem = $this->findOrderItemByVariant($cart, (int) $variant->getId());
 
                 if ($existingItem) {
@@ -171,7 +188,7 @@ class CartController
                 'cart' => $this->formatCart($cart, $locale),
             ]);
         } catch (\Exception $e) {
-            $this->logger?->error('Cart add failed: ' . $e->getMessage());
+            $this->logger?->error('Cart add failed', ['exception_class' => $e::class]);
             return new JsonResponse(['success' => false, 'error' => 'Failed to add item to cart'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -217,6 +234,15 @@ class CartController
             }
 
             $newQty = max(1, (int) $quantity);
+            if (!$this->isSellableInCart($variant, $cart)) {
+                return new JsonResponse(['success' => false, 'error' => 'Variant ' . $rawId . ' not found'], Response::HTTP_NOT_FOUND);
+            }
+            // Lowering a line is always allowed, even below the stock now left.
+            $stockToCheck = $newQty > $orderItem->getQuantity() ? $newQty : 0;
+            if ($error = $this->quantityError($variant, $newQty, $stockToCheck)) {
+                return $error;
+            }
+
             $this->orderItemQuantityModifier->modify($orderItem, $newQty);
             $this->entityManager->persist($cart);
             $this->entityManager->flush();
@@ -229,7 +255,7 @@ class CartController
                 'cart' => $this->formatCart($cart, $locale),
             ]);
         } catch (\Exception $e) {
-            $this->logger?->error('Cart update failed: ' . $e->getMessage());
+            $this->logger?->error('Cart update failed', ['exception_class' => $e::class]);
             return new JsonResponse(['success' => false, 'error' => 'Failed to update cart'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -284,7 +310,7 @@ class CartController
                 'cart' => $this->formatCart($cart, $locale),
             ]);
         } catch (\Exception $e) {
-            $this->logger?->error('Cart remove failed: ' . $e->getMessage());
+            $this->logger?->error('Cart remove failed', ['exception_class' => $e::class]);
             return new JsonResponse(['success' => false, 'error' => 'Failed to remove item'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -327,7 +353,7 @@ class CartController
                 'cart' => $this->emptyCart(),
             ]);
         } catch (\Exception $e) {
-            $this->logger?->error('Cart clear failed: ' . $e->getMessage());
+            $this->logger?->error('Cart clear failed', ['exception_class' => $e::class]);
             return new JsonResponse(['success' => false, 'error' => 'Failed to clear cart'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -384,11 +410,12 @@ class CartController
     /**
      * Resolves a variant from various identification_number formats:
      * - "variation-{id}" → variant by Sylius ID
-     * - "product-{id}" → first variant of that product (simple products)
+     * - "product-{id}" → first variant of that product (simple products);
+     *   the first enabled one when adding
      * - Numeric (e.g. 24) → variant by Sylius ID
      * - Any other string (e.g. SKU "PHONE_RED") → variant by code
      */
-    private function resolveVariant(string|int $rawId): ?ProductVariantInterface
+    private function resolveVariant(string|int $rawId, bool $enabledOnly = false): ?ProductVariantInterface
     {
         $rawId = (string) $rawId;
 
@@ -397,7 +424,12 @@ class CartController
         }
 
         if (preg_match('/^product-(\d+)$/', $rawId, $matches)) {
-            return $this->variantRepository->findOneBy(['product' => (int) $matches[1]]);
+            $criteria = ['product' => (int) $matches[1]];
+            if ($enabledOnly) {
+                $criteria['enabled'] = true;
+            }
+
+            return $this->variantRepository->findOneBy($criteria, ['position' => 'ASC']);
         }
 
         if (is_numeric($rawId)) {
@@ -405,6 +437,49 @@ class CartController
         }
 
         return $this->variantRepository->findOneBy(['code' => $rawId]);
+    }
+
+    /**
+     * What Sylius's own add-to-cart checks before stock: the variant and its
+     * product are enabled and the product is sold in the cart's channel. A
+     * refused variant answers like a missing one, so the API does not reveal
+     * hidden products.
+     */
+    private function isSellableInCart(ProductVariantInterface $variant, OrderInterface $cart): bool
+    {
+        $product = $variant->getProduct();
+        $channel = $cart->getChannel();
+
+        return $variant->isEnabled()
+            && $product !== null
+            && $product->isEnabled()
+            && $channel !== null
+            && $product->hasChannel($channel);
+    }
+
+    /**
+     * Sylius's quantity range (1 to `sylius.order_item_quantity_modifier.limit`)
+     * and its availability checker, which passes untracked variants. Zero for
+     * $quantityInCart skips the stock check.
+     */
+    private function quantityError(ProductVariantInterface $variant, int $quantity, int $quantityInCart): ?JsonResponse
+    {
+        if ($quantity > $this->quantityLimit) {
+            return new JsonResponse(
+                ['success' => false, 'error' => 'Quantity must be between 1 and ' . $this->quantityLimit],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        if ($quantityInCart > 0 && $this->availabilityChecker !== null
+            && !$this->availabilityChecker->isStockSufficient($variant, $quantityInCart)) {
+            return new JsonResponse(
+                ['success' => false, 'error' => 'Not enough stock for ' . ($variant->getCode() ?? 'variation-' . $variant->getId())],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
+        return null;
     }
 
     private function findOrderItemByVariant(OrderInterface $cart, int $variantId): ?OrderItemInterface

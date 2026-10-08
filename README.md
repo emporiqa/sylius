@@ -25,7 +25,9 @@ Everything beyond this page lives in the full developer documentation at [empori
 - **Page Sync**: Synchronization of any translatable page entity (policies, FAQ, blog posts, etc.)
 - **Multi-Channel**: Consolidated events with per-channel pricing, availability, and content across all languages
 - **Cart & Checkout**: REST API for in-chat cart operations (add, update, remove, clear, view, checkout URL) with event hooks
-- **Order Status rule**: Emporiqa's ready-made Order status rule looks orders up through a signed, rate-limited endpoint
+- **Order Status rule**: Emporiqa's ready-made Order status rule looks orders up through a signed, rate-limited endpoint; a signed-in shopper gives only the number of an order they placed signed in
+- **Other ready-made rules**: under Settings > Rules in Emporiqa, returns, cancellations, order changes, quotes and invoice requests go to your team by email
+- **Customer info**: the plugin tells Emporiqa a signed-in shopper's name, email and newest orders (`actions/customer-info`). Emporiqa uses it to answer "where is my order?" with their newest order when they give no number, and to fill in their email in your rules
 - **Order Completion**: Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
 - **Chat Widget**: Cache-safe embeddable chat widget with currency/channel awareness; a signed-in shopper's token comes from an uncached endpoint, never from the page
 - **Visual Search**: Shoppers upload a photo in the widget; the chat matches it against your synced Sylius catalog (no extra config required)
@@ -33,7 +35,8 @@ Everything beyond this page lives in the full developer documentation at [empori
 - **Widget Appearance**: up to four starter questions per language under the welcome message, your store's picture in the chat header and next to the chat's answers, and your team's own names and photos on their replies
 - **Multi-language**: Syncs content in all configured Sylius locales with currency switcher support. The chat itself answers in 65+ languages, independent of which locales you sync. A locale left out of `enabled_languages` is not synced, and its pages show no chat
 - **Console Commands**: Memory-efficient sync commands with batching, dry-run, and session management
-- **Webhook Retry**: Automatic retry with exponential backoff for transient failures
+- **Webhook Retry**: Automatic retry with backoff for transient failures; changes Emporiqa did not accept (down, a wrong secret) are kept and sent again with the next change
+- **Only what the shop shows**: a disabled product, variant or page is removed from Emporiqa, so the chat never links a page your shop answers with 404
 - **Fully Extensible**: Decorate any service interface, listen to events (`PostFormatEvent`, `CartOperationEvent`, `PreSyncEvent`, etc.)
 
 Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, Shopware, and any store via webhook API. One Emporiqa account and dashboard runs across all of them.
@@ -160,11 +163,19 @@ is my order?" from your Sylius orders.
    Go live.
 
 Shoppers who are not signed in prove an order with its number and email. A
-signed-in shopper is matched by their Sylius customer id.
+signed-in shopper is matched by their Sylius customer id, for the orders
+they placed signed in; an order placed as a guest (even with the same
+email) still needs its email. When an email is given, the email is the
+proof and the customer id is not checked, so a signed-in shopper can also
+look up a guest order they placed with another email.
 
 Once the order is proved, the chat can answer its status and tracking, and
 its details when the shopper asks: what was ordered, the totals, payment,
 shipping method and delivery time, and the shipping and billing addresses.
+
+The other ready-made rules under Settings > Rules in Emporiqa pass returns,
+cancellations, order changes, quotes and invoice requests to your team by
+email, with no plugin endpoint involved.
 
 To change that answer or add your own details, listen to
 `OrderStatusEvent` (`emporiqa.order_status`). It runs after the answer is
@@ -191,6 +202,41 @@ The same address also answers `actions/customer-prices`, which gives
 Emporiqa the prices a signed-in customer pays. In Sylius core that is the
 channel price with its catalog promotions, the same as the synced price.
 
+### Customer info
+
+The same address answers `actions/customer-info`: for a signed-in shopper
+(matched by their Sylius customer id from a token Emporiqa verified), the
+account's name, first and last name and email, and up to 10 of the
+orders they placed signed in, newest first: number, date, status, total
+and currency. Carts, guest checkouts (also those with the account's email,
+which Sylius keeps on the same customer record), and orders in channels
+the plugin does not sync are left out. Nothing else is sent: no
+addresses, phone or internal ids. There is nothing to set up.
+
+To remove fields or add your own, listen to `CustomerInfoEvent`
+(`emporiqa.customer_info`). It runs after the answer is filled; `extra`
+takes the same bounds as for Order status:
+
+```php
+use Emporiqa\SyliusPlugin\Event\CustomerInfoEvent;
+use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+
+#[AsEventListener(event: CustomerInfoEvent::NAME)]
+final class LoyaltyCustomerInfoListener
+{
+    public function __invoke(CustomerInfoEvent $event): void
+    {
+        $data = $event->getData();
+        unset($data['customer']['email']);
+        $data['extra']['loyalty_tier'] = 'gold';
+        $event->setData($data);
+    }
+}
+```
+
+Customer info is limited to 30 calls per customer and 600 per store per
+10 minutes.
+
 The rate limits of these endpoints are counted in `cache.app`. If your shop
 runs on more than one web server, that pool must be shared (Redis or
 Memcached), not APCu.
@@ -205,7 +251,7 @@ removing it, including through custom CSS or custom code, as a breach.
 
 ## Keeping your catalog in sync
 
-Product, variant and page changes reach Emporiqa automatically through Sylius resource events and Doctrine listeners. Delivery is synchronous: events queue per request and flush on `kernel.terminate`, so no `messenger:consume` worker, supervisord setup, or background cron is required. Re-run `bin/console emporiqa:sync:all` after changes that do not re-save products (a new channel, locale or currency, a moved taxon, a changed tax rate or promotion, a renamed brand attribute, a bulk import that bypasses Doctrine events, or an extended outage on the Emporiqa side), and once a week as a safety net. The commands and their flags are documented in [Console Commands](https://emporiqa.com/docs/sylius/#console-commands).
+Product, variant and page changes reach Emporiqa automatically through Sylius resource events and Doctrine listeners, including a variant added or deleted in the admin and a page edited in one language only. Delivery is synchronous: events queue per request and flush on `kernel.terminate`, so no `messenger:consume` worker, supervisord setup, or background cron is required. If Emporiqa does not accept a batch (it is down, or the secret is wrong after a change), the changed products and pages are noted in `cache.app` and sent again later, built again from your shop at that moment, so a retry never sends an older version than one Emporiqa already has. A retry rides on a later change that Emporiqa accepted: that change goes first, then at most 25 waiting items, oldest first, each tried at most once every 10 minutes. Up to 500 items wait, for at most 7 days and 20 tries each (spaced by those 10 minutes, so hours of outage); `bin/console emporiqa:test-connection` says how many are waiting, and a completed `emporiqa:sync:all` makes them unnecessary. With `symfony/lock` installed, the list is updated under a lock. A retried deletion of an item that is gone dispatches `PreSyncEvent` with operation `delete` and an `Emporiqa\SyliusPlugin\Model\DeletedItem` as the entity, so a listener that cancels deletions is honoured. Re-run `bin/console emporiqa:sync:all` after changes that do not re-save products (a new channel, locale or currency, a moved taxon, a changed tax rate or promotion, a renamed brand attribute, a bulk import that bypasses Doctrine events, or an extended outage on the Emporiqa side), and once a week as a safety net. The commands and their flags are documented in [Console Commands](https://emporiqa.com/docs/sylius/#console-commands).
 
 ## Pricing
 

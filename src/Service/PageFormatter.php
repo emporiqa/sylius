@@ -20,8 +20,16 @@ class PageFormatter implements PageFormatterInterface
         private ?LoggerInterface $logger = null,
     ) {}
 
+    /**
+     * A page entity with an enabled flag that is off is answered with its
+     * deletion: the shop no longer shows it, so the chat must not link it.
+     */
     public function format(PageInterface $page): array
     {
+        if (method_exists($page, 'isEnabled') && !$page->isEnabled()) {
+            return $this->formatForDeletion($page);
+        }
+
         try {
             $translations = $page->getTranslations();
         } catch (\Exception) {

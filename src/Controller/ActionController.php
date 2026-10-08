@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\Controller;
 
 use Emporiqa\SyliusPlugin\Service\ActionStateStore;
+use Emporiqa\SyliusPlugin\Service\CustomerInfo;
 use Emporiqa\SyliusPlugin\Service\CustomerPrices;
 use Emporiqa\SyliusPlugin\Service\OrderStatusLookup;
 use Emporiqa\SyliusPlugin\Service\SignatureHelper;
@@ -18,6 +19,8 @@ use Symfony\Component\HttpFoundation\Response;
  *
  *   actions/order-status     read-only order lookup, signed both ways (scheme 2)
  *   actions/customer-prices  what a signed-in customer pays, read-only
+ *   actions/customer-info    who the signed-in customer is and their newest
+ *                            orders, read-only
  *   actions/verify           the endpoint challenge that proves this shop
  *                            holds the store's secret
  *
@@ -36,6 +39,7 @@ class ActionController
         private ActionStateStore $state,
         private ?LoggerInterface $logger = null,
         private ?CustomerPrices $customerPrices = null,
+        private ?CustomerInfo $customerInfo = null,
     ) {}
 
     public function verify(Request $request): Response
@@ -51,6 +55,11 @@ class ActionController
     public function customerPrices(Request $request): Response
     {
         return $this->handle($request, 'customer_prices');
+    }
+
+    public function customerInfo(Request $request): Response
+    {
+        return $this->handle($request, 'customer_info');
     }
 
     private function handle(Request $request, string $key): Response
@@ -77,7 +86,10 @@ class ActionController
             return $this->respond(400, ['status' => 'error', 'message_code' => 'invalid_field']);
         }
 
-        if ($payload['rule'] !== $key || ($key === 'customer_prices' && $this->customerPrices === null)) {
+        if ($payload['rule'] !== $key ||
+            ($key === 'customer_prices' && $this->customerPrices === null) ||
+            ($key === 'customer_info' && $this->customerInfo === null)
+        ) {
             return $this->respond(404, ['status' => 'error', 'message_code' => 'disabled'], $requestId);
         }
         if ($key === 'verify') {
@@ -85,19 +97,24 @@ class ActionController
         }
 
         try {
-            // Per rule: an answer is only ever replayed on the endpoint that gave it.
-            $remembered = $this->state->remembered($key . ':' . $requestId);
+            // Per rule and per exact body: an answer is only ever replayed on
+            // the endpoint that gave it, for the same request (a reused
+            // request_id with another customer or order is a new call).
+            $replayKey = $key . ':' . $requestId . ':' . hash('sha256', $body);
+            $remembered = $this->state->remembered($replayKey);
             if ($remembered !== null) {
                 return $this->respond($remembered[0], $remembered[1], $requestId);
             }
 
             // Counted after the dedupe, so Emporiqa's retry of one call is free.
-            $limited = $key === 'order_status'
-                ? $this->state->rateLimitHit(
+            $limited = match ($key) {
+                'order_status' => $this->state->rateLimitHit(
                     OrderStatusLookup::field($payload, 'order_number'),
                     OrderStatusLookup::field($payload, 'email'),
-                )
-                : $this->state->customerPriceLimitHit(CustomerPrices::customerId($payload));
+                ),
+                'customer_info' => $this->state->customerInfoLimitHit(CustomerPrices::customerId($payload)),
+                default => $this->state->customerPriceLimitHit(CustomerPrices::customerId($payload)),
+            };
             if ($limited !== null) {
                 return $this->respond(
                     429,
@@ -107,11 +124,13 @@ class ActionController
                 );
             }
 
-            $answer = $key === 'order_status'
-                ? $this->orderStatus->handle($payload)
-                : $this->customerPrices->handle($payload);
+            $answer = match ($key) {
+                'order_status' => $this->orderStatus->handle($payload),
+                'customer_info' => $this->customerInfo->handle($payload),
+                default => $this->customerPrices->handle($payload),
+            };
             $encoded = (string) json_encode($answer, self::JSON_FLAGS);
-            $this->state->remember($key . ':' . $requestId, 200, $encoded);
+            $this->state->remember($replayKey, 200, $encoded);
         } catch (\Throwable $e) {
             // The class only: a database error's message can quote the email or order number.
             $this->logger?->error('Emporiqa ' . $payload['rule'] . ' failed', ['exception_class' => $e::class]);

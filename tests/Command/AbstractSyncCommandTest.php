@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\Tests\Command;
 
 use Emporiqa\SyliusPlugin\Command\AbstractSyncCommand;
+use Emporiqa\SyliusPlugin\Service\WebhookEventQueue;
+use Emporiqa\SyliusPlugin\Tests\Service\FakeCurrentState;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Command\Command;
@@ -85,8 +88,10 @@ class FixtureSyncCommand extends AbstractSyncCommand
         WebhookSenderInterface $webhookSender,
         private array $entities,
         private ?array $formattedEvents = null,
+        ?WebhookEventQueue $webhookQueue = null,
+        string $webhookUrl = '',
     ) {
-        parent::__construct($webhookSender);
+        parent::__construct($webhookSender, null, $webhookQueue, $webhookUrl);
         $this->setName('emporiqa:sync:fixtures');
     }
 
@@ -144,6 +149,59 @@ class AbstractSyncCommandTest extends TestCase
         $this->assertSame(Command::SUCCESS, $tester->getStatusCode());
         $this->assertContains('sync.start', $sender->sentTypes());
         $this->assertContains('sync.complete', $sender->sentTypes());
+    }
+
+    /**
+     * The links printed after a sync point at the Emporiqa host the shop is
+     * connected to, not always emporiqa.com.
+     */
+    public function testTheResultsLinkUsesTheConfiguredHost(): void
+    {
+        $command = new FixtureSyncCommand(new RecordingWebhookSender(), $this->entities(1), [$this->productEvent()], null, 'https://test.emporiqa.com/webhooks/sync/');
+        $tester = new CommandTester($command);
+        $tester->execute([]);
+
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay());
+        $this->assertStringContainsString('https://test.emporiqa.com/platform/products/', $display);
+        $this->assertStringNotContainsString('https://emporiqa.com/', $display);
+    }
+
+    public function testPlatformUrl(): void
+    {
+        $this->assertSame('https://emporiqa.com/platform/pages/', AbstractSyncCommand::platformUrl('https://emporiqa.com/webhooks/sync/', 'platform/pages/'));
+        $this->assertSame('http://localhost:8000/platform/pages/', AbstractSyncCommand::platformUrl('http://localhost:8000/webhooks/sync/', 'platform/pages/'));
+        $this->assertSame('https://emporiqa.com/platform/pages/', AbstractSyncCommand::platformUrl('', 'platform/pages/'));
+        $this->assertSame('https://eu.example.com/platform/', AbstractSyncCommand::platformUrl('ftp://eu.example.com/x', '/platform/'));
+    }
+
+    /**
+     * Changes kept from an earlier failed send are older than what a
+     * completed sync just sent; they are forgotten, the other kind kept.
+     */
+    public function testACompletedSyncForgetsKeptEventsOfItsKind(): void
+    {
+        $failing = new RecordingWebhookSender(['product.updated', 'page.updated']);
+        $queue = new WebhookEventQueue($failing, null, new ArrayAdapter(), new FakeCurrentState([]));
+        $queue->queue([$this->productEvent(), ['type' => 'page.updated', 'data' => ['identification_number' => 'page-1']]]);
+        $queue->flush();
+        $this->assertSame(2, $queue->retainedCount());
+
+        $command = new FixtureSyncCommand(new RecordingWebhookSender(), $this->entities(1), [$this->productEvent()], $queue);
+        (new CommandTester($command))->execute([]);
+
+        $this->assertSame(1, $queue->retainedCount());
+    }
+
+    public function testASyncThatFailedKeepsTheKeptEvents(): void
+    {
+        $queue = new WebhookEventQueue(new RecordingWebhookSender(['product.updated']), null, new ArrayAdapter(), new FakeCurrentState([]));
+        $queue->queue([$this->productEvent()]);
+        $queue->flush();
+
+        $command = new FixtureSyncCommand(new RecordingWebhookSender(['product.updated']), $this->entities(1), [$this->productEvent()], $queue);
+        (new CommandTester($command))->execute([]);
+
+        $this->assertSame(1, $queue->retainedCount());
     }
 
     public function testSkipsCompletionWhenAnyBatchFails(): void

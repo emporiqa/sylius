@@ -11,6 +11,8 @@ use Emporiqa\SyliusPlugin\Service\PageFormatter;
 use Emporiqa\SyliusPlugin\Service\PageFormatterInterface;
 use Emporiqa\SyliusPlugin\Service\PageUrlResolver;
 use Emporiqa\SyliusPlugin\Service\PageUrlResolverInterface;
+use Emporiqa\SyliusPlugin\Service\WebhookSender;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
@@ -22,6 +24,13 @@ class EmporiqaExtension extends Extension
     {
         $configuration = new Configuration();
         $config = $this->processConfiguration($configuration, $configs);
+
+        // An env var is still a placeholder here (no scheme yet), so only a
+        // literal URL is checked; WebhookSender checks the real value.
+        $webhookUrl = (string) $config['webhook_url'];
+        if (str_contains($webhookUrl, '://') && !WebhookSender::isSecureUrl($webhookUrl)) {
+            throw new InvalidConfigurationException(sprintf('The Emporiqa webhook_url must start with https:// (got "%s").', $webhookUrl));
+        }
 
         $container->setParameter('emporiqa.store_id', $config['store_id']);
         $container->setParameter('emporiqa.webhook_url', $config['webhook_url']);

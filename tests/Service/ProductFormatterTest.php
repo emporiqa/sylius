@@ -272,7 +272,9 @@ class ProductFormatterTest extends TestCase
         $events = $this->formatter->format($product);
 
         $this->assertSame(39.99, $events[0]['data']['prices']['DEFAULT'][0]['current_price']);
-        $this->assertSame(50.0, $events[1]['data']['prices']['DEFAULT'][0]['current_price']);
+        // The disabled variant is removed, not sent with its price.
+        $this->assertSame(['type' => 'product.deleted', 'data' => ['identification_number' => 'variation-10']], $events[1]);
+        $this->assertSame(39.99, $events[2]['data']['prices']['DEFAULT'][0]['current_price']);
     }
 
     public function testFormatProductWithVariants(): void
@@ -1225,6 +1227,7 @@ class ProductFormatterTest extends TestCase
     {
         $product = $this->createMock(ProductInterface::class);
         $product->method('getId')->willReturn(1);
+        $product->method('isEnabled')->willReturn(true);
         $product->method('getChannels')->willReturn(new ArrayCollection());
 
         $events = $this->formatter->format($product);
@@ -1232,7 +1235,11 @@ class ProductFormatterTest extends TestCase
         $this->assertEmpty($events);
     }
 
-    public function testFormatDisabledProductIsOutOfStock(): void
+    /**
+     * A disabled product's page is a 404 in the shop: it is removed from
+     * Emporiqa (product and variation rows), not kept as out of stock.
+     */
+    public function testFormatDisabledProductIsDeleted(): void
     {
         $translation = $this->createMock(ProductTranslationInterface::class);
         $translation->method('getLocale')->willReturn('en_US');
@@ -1264,10 +1271,14 @@ class ProductFormatterTest extends TestCase
         $product->method('getImages')->willReturn(new ArrayCollection());
 
         $this->router->method('generate')->willReturn('https://shop.example.com/disabled');
+        $variant->method('getId')->willReturn(7);
 
         $events = $this->formatter->format($product);
 
-        $this->assertSame('out_of_stock', $events[0]['data']['availability_statuses']['DEFAULT']);
+        $this->assertSame([
+            ['type' => 'product.deleted', 'data' => ['identification_number' => 'product-1']],
+            ['type' => 'product.deleted', 'data' => ['identification_number' => 'variation-7']],
+        ], $events);
     }
 
     public function testFormatDisabledVariantIsOutOfStock(): void
@@ -1749,7 +1760,7 @@ class ProductFormatterTest extends TestCase
         ];
     }
 
-    public function testDisabledProductIsNotAvailableForOrder(): void
+    public function testDisabledProductIsNotSentForOrder(): void
     {
         $translation = $this->createMock(ProductTranslationInterface::class);
         $translation->method('getLocale')->willReturn('en_US');
@@ -1784,7 +1795,7 @@ class ProductFormatterTest extends TestCase
 
         $events = $this->formatter->format($product);
 
-        $this->assertFalse($events[0]['data']['available_for_order']);
+        $this->assertSame(['product.deleted'], array_unique(array_column($events, 'type')));
     }
 
     public function testVariantPayloadIncludesMaxOrderAndContractFields(): void

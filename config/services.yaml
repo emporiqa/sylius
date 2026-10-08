@@ -15,6 +15,17 @@ services:
     Emporiqa\SyliusPlugin\Service\WebhookEventQueue:
         arguments:
             $cache: '@cache.app'
+            $currentState: !service_closure '@Emporiqa\SyliusPlugin\Service\CurrentStateBuilder'
+            $lockFactory: '@?lock.factory'
+
+    Emporiqa\SyliusPlugin\Service\CurrentStateBuilder:
+        arguments:
+            $products: '@sylius.repository.product'
+            $variants: '@sylius.repository.product_variant'
+            $pageFormatter: '@?Emporiqa\SyliusPlugin\Service\PageFormatterInterface'
+            $pageEntityClasses: '%emporiqa.page_entity_classes%'
+            $syncProducts: '%emporiqa.sync.products%'
+            $syncPages: '%emporiqa.sync.pages%'
 
     Emporiqa\SyliusPlugin\Service\ChannelMappingResolver:
         arguments:
@@ -36,6 +47,11 @@ services:
             $tokenStorage: '@?security.token_storage'
             $zoneMatcher: '@?Sylius\Component\Addressing\Matcher\ZoneMatcherInterface'
             $addressFactory: '@?sylius.factory.address'
+
+    Emporiqa\SyliusPlugin\Service\CustomerInfo:
+        arguments:
+            $customers: '@sylius.repository.customer'
+            $orders: '@sylius.repository.order'
 
     Emporiqa\SyliusPlugin\Service\ProductFormatter:
         arguments:
@@ -91,13 +107,18 @@ services:
             $enabledLanguages: '%emporiqa.enabled_languages%'
             $urlGenerator: '@router'
 
-    Emporiqa\SyliusPlugin\Command\SyncProductsCommand: ~
+    Emporiqa\SyliusPlugin\Command\SyncProductsCommand:
+        arguments:
+            $webhookUrl: '%emporiqa.webhook_url%'
 
     Emporiqa\SyliusPlugin\Command\SyncPagesCommand:
         arguments:
             $pageEntityClasses: '%emporiqa.page_entity_classes%'
+            $webhookUrl: '%emporiqa.webhook_url%'
 
-    Emporiqa\SyliusPlugin\Command\SyncAllCommand: ~
+    Emporiqa\SyliusPlugin\Command\SyncAllCommand:
+        arguments:
+            $webhookUrl: '%emporiqa.webhook_url%'
 
     Emporiqa\SyliusPlugin\Command\TestConnectionCommand:
         arguments:
@@ -138,6 +159,8 @@ services:
             $eventDispatcher: '@?Symfony\Contracts\EventDispatcher\EventDispatcherInterface'
             $enabled: '%emporiqa.cart.enabled%'
             $mediaBasePath: '%emporiqa.media_base_path%'
+            $availabilityChecker: '@sylius.checker.inventory.availability'
+            $quantityLimit: '%sylius.order_item_quantity_modifier.limit%'
         tags: ['controller.service_arguments']
 
     Emporiqa\SyliusPlugin\EventSubscriber\OrderCompleteSubscriber: ~

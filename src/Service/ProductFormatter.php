@@ -43,8 +43,19 @@ class ProductFormatter implements ProductFormatterInterface
         $this->priceEntries ??= new PriceEntryBuilder();
     }
 
+    /**
+     * A disabled product is answered with its deletion: the shop gives its
+     * page a 404, so the chat must not offer it. A disabled variant of an
+     * enabled product is removed the same way, while the product's parent
+     * stays and keeps the shape it has (a product does not turn simple
+     * because a variant is switched off).
+     */
     public function format(ProductInterface $product): array
     {
+        if (!$product->isEnabled()) {
+            return $this->formatForDeletion($product);
+        }
+
         $channels = $product->getChannels();
         if ($channels->isEmpty()) {
             $this->logger?->debug('Product has no channels, skipping', [
@@ -61,7 +72,11 @@ class ProductFormatter implements ProductFormatterInterface
             $events[] = $this->formatParentProduct($product);
 
             foreach ($variants as $variant) {
-                $events[] = $this->formatVariant($variant, $product);
+                if ($variant->isEnabled()) {
+                    $events[] = $this->formatVariant($variant, $product);
+                } elseif ($variant instanceof ProductVariantInterface) {
+                    array_push($events, ...$this->formatVariantForDeletion($variant, $product));
+                }
             }
 
             return $events;

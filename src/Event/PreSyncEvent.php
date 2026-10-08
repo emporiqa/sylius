@@ -25,6 +25,12 @@ class PreSyncEvent extends Event
         private string $operation,
     ) {}
 
+    /**
+     * The product, variant or page. For a deletion Emporiqa did not accept
+     * earlier and that is sent again after the item is gone, an
+     * Emporiqa\SyliusPlugin\Model\DeletedItem (type, id, identification
+     * number) stands in for it.
+     */
     public function getEntity(): object
     {
         return $this->entity;

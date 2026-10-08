@@ -196,6 +196,49 @@ class PageFormatterTest extends TestCase
         $this->assertSame('page-42', $events[0]['data']['identification_number']);
     }
 
+    /**
+     * A disabled page is not shown by the shop any more: it is removed from
+     * Emporiqa instead of being sent again.
+     */
+    public function testFormatDisabledPageIsDeleted(): void
+    {
+        $formatter = new PageFormatter($this->urlResolver, new ChannelMappingResolver(), ['en_US']);
+
+        $events = $formatter->format($this->switchablePage(false));
+
+        $this->assertSame([['type' => 'page.deleted', 'data' => ['identification_number' => 'page-5']]], $events);
+    }
+
+    public function testFormatEnabledPageIsSent(): void
+    {
+        $ch = $this->createMock(ChannelInterface::class);
+        $ch->method('getCode')->willReturn('default');
+        $channelRepo = $this->createMock(ChannelRepositoryInterface::class);
+        $channelRepo->method('findAll')->willReturn([$ch]);
+        $formatter = new PageFormatter($this->urlResolver, new ChannelMappingResolver($channelRepo), ['en_US']);
+
+        $events = $formatter->format($this->switchablePage(true));
+
+        $this->assertSame('page.updated', $events[0]['type']);
+        $this->assertSame('Returns', $events[0]['data']['titles']['default']['en_US']);
+    }
+
+    private function switchablePage(bool $enabled): PageInterface
+    {
+        $translation = new class () {
+            public function getLocale(): string { return 'en_US'; }
+            public function getTitle(): string { return 'Returns'; }
+            public function getContent(): string { return '30 days'; }
+        };
+
+        return new class ($enabled, $translation) implements PageInterface {
+            public function __construct(private bool $enabled, private object $translation) {}
+            public function getId(): ?int { return 5; }
+            public function getTranslations(): ArrayCollection { return new ArrayCollection([$this->translation]); }
+            public function isEnabled(): bool { return $this->enabled; }
+        };
+    }
+
     public function testFormatStripsHtmlFromContent(): void
     {
         $ch = $this->createMock(ChannelInterface::class);

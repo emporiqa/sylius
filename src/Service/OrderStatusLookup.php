@@ -56,8 +56,7 @@ class OrderStatusLookup
      */
     public function handle(array $payload): array
     {
-        $customerId = $payload['customer']['id'] ?? null;
-        $customerId = is_scalar($customerId) && ctype_digit((string) $customerId) ? (int) $customerId : 0;
+        $customerId = (int) CustomerPrices::customerId($payload);
 
         $orderNumber = ltrim(self::field($payload, 'order_number'), '#');
         $email = self::field($payload, 'email');
@@ -138,7 +137,10 @@ class OrderStatusLookup
      * With an email, the order's customer email must match it, whoever is
      * signed in: a signed-in shopper looking up a guest order they placed
      * proves it the same way as when signed out. Without one, the verified
-     * customer must be the order's customer (by id, never by email).
+     * customer must be the order's customer (by id, never by email), and
+     * the order must have been placed signed in: Sylius keeps one customer
+     * per email, so a guest checkout with an account's email is on that
+     * account's customer record, and only createdByGuest tells it apart.
      */
     private function ownedBy(OrderInterface $order, string $email, int $customerId): bool
     {
@@ -147,7 +149,9 @@ class OrderStatusLookup
             return false;
         }
         if ($email === '') {
-            return $customerId > 0 && (int) $customer->getId() === $customerId;
+            return $customerId > 0
+                && (int) $customer->getId() === $customerId
+                && !self::placedAsGuest($order);
         }
         $orderEmail = (string) $customer->getEmail();
 
@@ -201,9 +205,9 @@ class OrderStatusLookup
             try {
                 $data += array_filter($part(), static fn ($value): bool => $value !== '' && $value !== [] && $value !== null);
             } catch (\Throwable $e) {
-                $this->logger?->warning('Emporiqa order_status left out the order {part}: {message}', [
+                $this->logger?->warning('Emporiqa order_status left out the order {part}', [
                     'part' => $name,
-                    'message' => $e->getMessage(),
+                    'exception_class' => $e::class,
                 ]);
             }
         }
@@ -479,6 +483,15 @@ class OrderStatusLookup
         $text = trim((string) preg_replace('/\s+/u', ' ', (string) $value));
 
         return mb_substr($text, 0, self::MAX_TEXT);
+    }
+
+    /**
+     * Whether a guest checkout placed the order (the Core order flag, on
+     * every Sylius this plugin supports, 1.12 and later).
+     */
+    public static function placedAsGuest(OrderInterface $order): bool
+    {
+        return $order->isCreatedByGuest();
     }
 
     public static function statusCode(OrderInterface $order): string

@@ -266,6 +266,37 @@ class OrderStatusLookupTest extends TestCase
         );
     }
 
+    /**
+     * Sylius keeps one customer per email, so a guest checkout with an
+     * account's email is on the account's customer record. The signed-in
+     * customer id alone proves only orders placed signed in; a guest order
+     * still needs its email, signed in or not.
+     */
+    public function testTheCustomerIdAloneDoesNotProveAGuestOrder(): void
+    {
+        $order = $this->order();
+        (new \ReflectionProperty($order->getCustomer(), 'id'))->setValue($order->getCustomer(), 77);
+        $this->assertTrue($order->isCreatedByGuest());
+        $lookup = $this->lookup($order);
+
+        $byId = $lookup->handle(['fields' => ['order_number' => '000000042'], 'customer' => ['id' => '77']]);
+        $byEmail = $lookup->handle(['fields' => ['order_number' => '000000042', 'email' => self::EMAIL], 'customer' => ['id' => '77']]);
+
+        $this->assertSame(['status' => 'not_found'], $byId);
+        $this->assertSame('found', $byEmail['status']);
+    }
+
+    public function testTheCustomerIdProvesAnOrderPlacedSignedIn(): void
+    {
+        $order = $this->order();
+        $customer = $order->getCustomer();
+        (new \ReflectionProperty($customer, 'id'))->setValue($customer, 77);
+        $order->setCustomerWithAuthorization($customer);
+
+        $this->assertSame('found', $this->lookup($order)->handle(['fields' => ['order_number' => '000000042'], 'customer' => ['id' => '0077']])['status']);
+        $this->assertSame(['status' => 'not_found'], $this->lookup($order)->handle(['fields' => ['order_number' => '000000042'], 'customer' => ['id' => '78']]));
+    }
+
     public function testNoEmailOrIdGoesBack(): void
     {
         $json = (string) json_encode($this->find($this->lookup($this->order())));
@@ -384,5 +415,29 @@ class OrderStatusLookupTest extends TestCase
         $this->assertSame('000000042', $answer['data']['order_number']);
         $this->assertArrayHasKey('items', $answer['data']);
         $this->assertSame(['customer', 'addresses'], $logger->records);
+    }
+
+    public function testAFailedPartLogsTheExceptionClassNotItsMessage(): void
+    {
+        $order = $this->order();
+        $broken = $this->createMock(AddressInterface::class);
+        $broken->method('getFullName')->willThrowException(new \RuntimeException('Entity of type Address for IDs id(123) was not found'));
+        $order->setBillingAddress($broken);
+        $logger = new class extends AbstractLogger {
+            public array $records = [];
+
+            public function log($level, \Stringable|string $message, array $context = []): void
+            {
+                $this->records[] = [(string) $message, $context];
+            }
+        };
+
+        $this->find($this->lookup($order, null, true, $logger));
+
+        $this->assertNotEmpty($logger->records);
+        foreach ($logger->records as [$message, $context]) {
+            $this->assertSame(\RuntimeException::class, $context['exception_class']);
+            $this->assertStringNotContainsString('id(123)', $message . json_encode($context));
+        }
     }
 }

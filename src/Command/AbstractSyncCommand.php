@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Emporiqa\SyliusPlugin\Command;
 
+use Emporiqa\SyliusPlugin\Service\WebhookEventQueue;
 use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Command\Command;
@@ -17,8 +18,28 @@ abstract class AbstractSyncCommand extends Command
     public function __construct(
         protected WebhookSenderInterface $webhookSender,
         protected ?LoggerInterface $logger = null,
+        protected ?WebhookEventQueue $webhookQueue = null,
+        protected string $webhookUrl = '',
     ) {
         parent::__construct();
+    }
+
+    /**
+     * A page of the Emporiqa dashboard on the host the shop sends its
+     * webhooks to, so a shop connected to another Emporiqa host is not sent
+     * to emporiqa.com.
+     */
+    public static function platformUrl(string $webhookUrl, string $path): string
+    {
+        $parts = parse_url($webhookUrl);
+        $host = is_array($parts) ? ($parts['host'] ?? '') : '';
+        if ($host === '') {
+            return 'https://emporiqa.com/' . ltrim($path, '/');
+        }
+        $scheme = in_array($parts['scheme'] ?? '', ['http', 'https'], true) ? $parts['scheme'] : 'https';
+        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+
+        return $scheme . '://' . $host . $port . '/' . ltrim($path, '/');
     }
 
     abstract protected function getEntityLabel(): string;
@@ -146,8 +167,10 @@ abstract class AbstractSyncCommand extends Command
             // index. Same guard as the Drupal reference implementation.
             if ($errorCount > 0) {
                 $io->warning('Sync session was not finalized because errors occurred: items missing from this sync were NOT removed from Emporiqa. Re-run the sync after resolving the errors.');
-            } elseif ($successCount > 0) {
-                $this->completeSyncSession($sessionId, $entityName, $io);
+            } elseif ($successCount > 0 && $this->completeSyncSession($sessionId, $entityName, $io)) {
+                // Everything is sent and what is gone is removed, so changes
+                // kept from a failed send earlier must not be sent over it.
+                $this->webhookQueue?->forgetRetained($entityName === 'pages' ? 'page.' : 'product.');
             }
         }
 
@@ -162,7 +185,7 @@ abstract class AbstractSyncCommand extends Command
         $io->newLine();
         if ($errorCount === 0) {
             $io->success(sprintf('%s sync completed successfully!', $entityLabel));
-            $io->note(sprintf('Emporiqa will now process and enhance the synced data. This may take a few minutes depending on the volume. Check the results at: https://emporiqa.com/platform/%s/', $entityName));
+            $io->note(sprintf('Emporiqa will now process and enhance the synced data. This may take a few minutes depending on the volume. Check the results at: %s', self::platformUrl($this->webhookUrl, 'platform/' . $entityName . '/')));
             return Command::SUCCESS;
         }
 
@@ -226,7 +249,7 @@ abstract class AbstractSyncCommand extends Command
         return null;
     }
 
-    private function completeSyncSession(string $sessionId, string $entityName, SymfonyStyle $io): void
+    private function completeSyncSession(string $sessionId, string $entityName, SymfonyStyle $io): bool
     {
         $event = [
             'type' => 'sync.complete',
@@ -238,8 +261,11 @@ abstract class AbstractSyncCommand extends Command
 
         if ($this->webhookSender->sendBatch([$event])) {
             $io->text(sprintf('  Completed sync session: %s', $sessionId));
-        } else {
-            $io->warning(sprintf('  Failed to complete sync session: %s', $sessionId));
+
+            return true;
         }
+        $io->warning(sprintf('  Failed to complete sync session: %s', $sessionId));
+
+        return false;
     }
 }

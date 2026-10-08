@@ -23,7 +23,7 @@ class Configuration implements ConfigurationInterface
                 ->scalarNode('webhook_url')
                     ->isRequired()
                     ->cannotBeEmpty()
-                    ->info('The Emporiqa webhook endpoint URL. Can use env var: "%env(EMPORIQA_WEBHOOK_URL)%"')
+                    ->info('The Emporiqa webhook endpoint URL (https only). Can use env var: "%env(EMPORIQA_WEBHOOK_URL)%"')
                 ->end()
                 ->scalarNode('webhook_secret')
                     ->isRequired()

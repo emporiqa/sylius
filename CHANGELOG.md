@@ -4,6 +4,141 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [v1.11.1] - 2026-10-08
+
+### In short
+- A variant added or deleted in the admin reaches Emporiqa: before, a new
+  variant was left out and a deleted one left its product out of date.
+- Disabled products, variants and pages are removed from Emporiqa instead
+  of staying in the chat as out of stock (their shop pages are a 404).
+- Editing a page in one language only is synced.
+- Changes Emporiqa did not accept (down, or a wrong secret after a change)
+  are sent again with the next change, as they are then, instead of being
+  lost until the next full sync.
+- Order status: a signed-in shopper's customer id no longer proves an
+  order placed as a guest checkout with the same email; that order still
+  needs its email (with an email, the email is the proof and the customer
+  id is not checked).
+- New: the chat can know who a signed-in shopper is and their newest
+  orders (`actions/customer-info`), so "where is my order?" needs no
+  order number.
+- The chat's cart follows the same rules as your shop's own "Add to cart":
+  a disabled product or variant, a product not sold in the channel, more
+  than the stock you have, or more than 9999 at once is refused.
+- Your Emporiqa webhook URL must start with `https://`; the plugin no
+  longer sends your catalog or orders over plain http.
+
+### Added
+- `actions/customer-info` under the actions base URL: for a signed-in
+  shopper's Sylius customer id (from a customer token Emporiqa verified),
+  the account's `name`, `first_name`, `last_name` and `email`, and up to 10
+  of the orders they placed signed in, newest first, each with
+  `order_number`, `placed_at`, `status_code` (the same codes as Order
+  status), `total` and `currency`. Carts, guest checkouts (also those with
+  the account's email, which Sylius keeps on the same customer record: the
+  order's `createdByGuest` tells them apart) and orders in channels the
+  plugin does not sync are left out. No `status_label`: Sylius has no
+  wording of its own for these states, as for Order status.
+  No addresses, phone or internal ids are sent. An unknown customer, or a
+  customer record without an enabled shop account, is `not_found`; a call
+  without a customer id is `rejected` (`missing_field`); only an integer or
+  a digit string is an id. Signed both ways like Order status, answers
+  replayed per `request_id` and body, limited to 30 calls per customer and
+  600 per store per 10 minutes. Nothing to set up.
+- `CustomerInfoEvent` (`emporiqa.customer_info`) runs after that answer is
+  built, so a listener can change or remove any field or add its own under
+  `extra`.
+- `emporiqa:test-connection` says how many changes are waiting to be sent
+  again.
+
+### Fixed
+- A variant created in the admin was not in its product's payload (Sylius's
+  form only sets the variant's product), so the product went out without
+  it, or as a simple product.
+- Deleting a variant now sends the product again (its parent availability,
+  price and options counted the deleted variant). A product left with one
+  variant is sent as a simple product, and the variation row of that last
+  variant is removed.
+- A product or variant delete is sent only once Sylius has deleted it. A
+  delete Sylius refuses (a variant or product used in an order) no longer
+  removes it from Emporiqa.
+- A disabled product is removed from Emporiqa with its variations, and a
+  disabled variant of an enabled product is removed while the product
+  stays. Enabling them sends them again. `emporiqa:sync:products` sends
+  enabled products only, and the sync session removes the others.
+- Page changes are sent only once Doctrine has committed them (they were
+  queued from inside the flush, so a flush that failed could still send
+  them), and a page changed several times in one flush is sent once. A
+  page deletion that was rolled back is not sent with a later flush, and
+  the buffer is cleared when an async message fails and when the service
+  is reset between messages of a worker.
+- A page entity with an `isEnabled()` method that answers false is removed
+  from Emporiqa; `emporiqa:sync:pages` skips such pages when the entity has
+  an `enabled` field.
+- A change to a page's translation alone (one language's title or text, a
+  language added or removed) sends the page.
+- Products and pages Emporiqa did not accept (with the rest of that
+  request's changes) are noted in `cache.app`, by identification number
+  only, and sent again with the next change, built again from the
+  database at that moment: a retry always sends the current state (a
+  deleted or disabled item as deleted), never an older version than one
+  another request or a full sync already sent. A retry rides on a later
+  flush whose own changes Emporiqa accepted: those go first, then at most
+  25 kept items, oldest first, each tried at most once every 10 minutes,
+  so a retry never costs a request its own changes and never repeats on
+  every request. An item leaves the list only once a flush sent it; one
+  whose state cannot be read is skipped without holding up the others. At
+  most 500 items are kept (the oldest dropped first), for at most 7 days
+  and 20 tries each (spaced by the 10 minutes), each drop logged with a
+  pointer to `emporiqa:sync:all`; a completed full sync clears the list. A
+  batch Emporiqa refuses for its content (HTTP 400 or 413) is not kept.
+  With `symfony/lock` installed the list is updated under a lock. A
+  retried deletion of an item that is gone dispatches `PreSyncEvent`
+  (`delete`, with a `DeletedItem` as the entity), so a listener's cancel
+  is honoured.
+- Order status: without an email, the signed-in customer's id proves only
+  orders placed signed in. Sylius keeps one customer per email, so a guest
+  checkout with an account's email sits on that account's customer record;
+  before, its customer id alone found those guest orders.
+- A ready-made rule answer is replayed only for the same `request_id` and
+  the same request body; a reused `request_id` with another body is a new
+  call.
+- The links printed after a sync point at the Emporiqa host in
+  `webhook_url`, not always emporiqa.com.
+- Adding to the cart from the chat could add a disabled variant, a variant
+  of a disabled product or of a product not in the shop's channel, more
+  than the stock on hand, or any quantity. It now runs the checks Sylius's
+  own add-to-cart runs: such a variant answers "not found" (as a missing
+  one does), and a quantity above stock (Sylius's availability checker,
+  which lets untracked variants through) or above
+  `sylius.order_item_quantity_modifier.limit` (9999 by default) answers
+  422 with the reason. Changing a quantity in the cart from the chat is
+  checked the same way when it goes up; lowering it or removing an item
+  always works. When one item of a request is refused, nothing in the
+  cart is changed. `product-{id}` now adds the first enabled variant.
+- An Emporiqa `webhook_url` that does not start with `https://` is
+  refused: written in the configuration, the container does not build;
+  set through an environment variable, nothing is sent (each sync, order
+  and `emporiqa:test-connection` says why in the log and the output).
+- An order status lookup that could not read part of an order, and a
+  failed cart change, log only the kind of error, no longer its message
+  (which could carry database ids and query values), like the rest of the
+  plugin.
+
+### Changed
+- `WebhookSender::getLastStatusCode()` reports the HTTP status of the last
+  send (not on `WebhookSenderInterface`, so your own senders keep working).
+- `AbstractSyncCommand`, `SyncProductsCommand`, `SyncPagesCommand` and
+  `SyncAllCommand` take the webhook queue and `webhook_url` as optional
+  constructor arguments.
+- `WebhookEventQueue` takes a `CurrentStateBuilderInterface` (the new
+  `CurrentStateBuilder` service, passed lazily) and an optional lock
+  factory; without a builder, failed sends are logged and not kept.
+- A customer id in a ready-made rule request is read strictly: an integer
+  or a digit string, leading zeros ignored.
+- `CartController` takes the inventory availability checker and the order
+  item quantity limit as optional constructor arguments.
+
 ## [v1.11.0] - 2026-10-06
 
 ### In short

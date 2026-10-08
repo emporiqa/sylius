@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\Command;
 
 use Emporiqa\SyliusPlugin\Service\ProductFormatterInterface;
+use Emporiqa\SyliusPlugin\Service\WebhookEventQueue;
 use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
 use Sylius\Component\Core\Model\ProductInterface;
 use Sylius\Component\Core\Repository\ProductRepositoryInterface;
@@ -26,6 +27,7 @@ class TestConnectionCommand extends Command
         private ProductRepositoryInterface $productRepository,
         private ProductFormatterInterface $productFormatter,
         private ?UrlGeneratorInterface $urlGenerator = null,
+        private ?WebhookEventQueue $webhookQueue = null,
     ) {
         parent::__construct();
     }
@@ -37,6 +39,14 @@ class TestConnectionCommand extends Command
     {
         $io = new SymfonyStyle($input, $output);
         $io->title('Emporiqa Dry Run Test');
+
+        $waiting = $this->webhookQueue?->retainedCount() ?? 0;
+        if ($waiting > 0) {
+            $io->warning(sprintf(
+                '%d product and page change(s) did not reach Emporiqa yet. They are sent again, as they are then, with later changes in the shop (up to 25 at a time, each at most every 10 minutes); to send everything now, run emporiqa:sync:all.',
+                $waiting,
+            ));
+        }
 
         $product = $this->findTestProduct();
         if ($product === null) {

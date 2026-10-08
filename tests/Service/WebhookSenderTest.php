@@ -131,6 +131,31 @@ class WebhookSenderTest extends TestCase
         $this->assertSame('Bad payload', $sender->getLastError());
     }
 
+    /** The queue keeps a failed batch unless Emporiqa refused its content. */
+    public function testTheLastStatusCodeIsReported(): void
+    {
+        $refused = $this->createMock(ResponseInterface::class);
+        $refused->method('getStatusCode')->willReturn(400);
+        $refused->method('getContent')->willReturn('{"error":"Validation failed"}');
+        $accepted = $this->createMock(ResponseInterface::class);
+        $accepted->method('getStatusCode')->willReturn(202);
+        $this->httpClient->method('request')->willReturnOnConsecutiveCalls(
+            $refused,
+            $accepted,
+            $this->throwException(new \Symfony\Component\HttpClient\Exception\TransportException('Connection refused')),
+            $this->throwException(new \Symfony\Component\HttpClient\Exception\TransportException('Connection refused')),
+            $this->throwException(new \Symfony\Component\HttpClient\Exception\TransportException('Connection refused')),
+        );
+        $sender = $this->createSender();
+
+        $this->assertFalse($sender->sendBatch([['type' => 'test', 'data' => []]]));
+        $this->assertSame(400, $sender->getLastStatusCode());
+        $this->assertTrue($sender->sendBatch([['type' => 'test', 'data' => []]]));
+        $this->assertSame(202, $sender->getLastStatusCode());
+        $this->assertFalse($sender->sendBatch([['type' => 'test', 'data' => []]]));
+        $this->assertNull($sender->getLastStatusCode());
+    }
+
     public function testSendBatchEmptyEventsReturnsTrue(): void
     {
         $this->httpClient->expects($this->never())->method('request');
@@ -437,5 +462,28 @@ class WebhookSenderTest extends TestCase
         $result = $this->createSender()->sendDryRun([['type' => 'test', 'data' => []]]);
 
         $this->assertEqualsWithDelta(200, $result['clock_skew'], 2);
+    }
+
+    public function testAPlainHttpUrlIsNeverSentTo(): void
+    {
+        $this->httpClient->expects($this->never())->method('request');
+        $this->logger->expects($this->atLeastOnce())->method('error');
+
+        $sender = new WebhookSender($this->httpClient, 'http://emporiqa.com/webhooks/sync/', 'store-123', 'test-secret', $this->logger);
+
+        $this->assertFalse($sender->sendBatch([['type' => 'order.completed', 'data' => ['order_number' => '000000042']]]));
+        $this->assertStringContainsString('https://', (string) $sender->getLastError());
+        $this->assertFalse($sender->testConnection()['success']);
+        $this->assertFalse($sender->sendDryRun([['type' => 'test', 'data' => []]])['success']);
+    }
+
+    public function testOnlyHttpsWithAHostIsSecure(): void
+    {
+        $this->assertTrue(WebhookSender::isSecureUrl('https://emporiqa.com/webhooks/sync/'));
+        $this->assertTrue(WebhookSender::isSecureUrl('HTTPS://test.emporiqa.com/webhooks/sync/'));
+        $this->assertFalse(WebhookSender::isSecureUrl('http://emporiqa.com/webhooks/sync/'));
+        $this->assertFalse(WebhookSender::isSecureUrl('http://localhost:8000/webhooks/sync/'));
+        $this->assertFalse(WebhookSender::isSecureUrl('emporiqa.com/webhooks/sync/'));
+        $this->assertFalse(WebhookSender::isSecureUrl('https:///webhooks/sync/'));
     }
 }

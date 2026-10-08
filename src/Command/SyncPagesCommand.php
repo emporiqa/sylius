@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Emporiqa\SyliusPlugin\Command;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
 use Emporiqa\SyliusPlugin\Service\PageFormatterInterface;
+use Emporiqa\SyliusPlugin\Service\WebhookEventQueue;
 use Emporiqa\SyliusPlugin\Service\WebhookSenderInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -26,8 +28,10 @@ class SyncPagesCommand extends AbstractSyncCommand
         private array $pageEntityClasses,
         WebhookSenderInterface $webhookSender,
         ?LoggerInterface $logger = null,
+        ?WebhookEventQueue $webhookQueue = null,
+        string $webhookUrl = '',
     ) {
-        parent::__construct($webhookSender, $logger);
+        parent::__construct($webhookSender, $logger, $webhookQueue, $webhookUrl);
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -54,10 +58,7 @@ class SyncPagesCommand extends AbstractSyncCommand
     protected function fetchEntities(): iterable
     {
         foreach ($this->pageEntityClasses as $class) {
-            $query = $this->entityManager
-                ->getRepository($class)
-                ->createQueryBuilder('p')
-                ->getQuery();
+            $query = $this->pagesQuery($class)->getQuery();
 
             foreach ($query->toIterable() as $entity) {
                 yield $entity;
@@ -71,15 +72,29 @@ class SyncPagesCommand extends AbstractSyncCommand
         $total = 0;
 
         foreach ($this->pageEntityClasses as $class) {
-            $total += (int) $this->entityManager
-                ->getRepository($class)
-                ->createQueryBuilder('p')
+            $total += (int) $this->pagesQuery($class)
                 ->select('COUNT(p.id)')
                 ->getQuery()
                 ->getSingleScalarResult();
         }
 
         return $total;
+    }
+
+    /**
+     * A page entity with an `enabled` field: the enabled ones only. The
+     * session's end removes the others from Emporiqa.
+     *
+     * @param class-string $class
+     */
+    private function pagesQuery(string $class): QueryBuilder
+    {
+        $query = $this->entityManager->createQueryBuilder()->select('p')->from($class, 'p');
+        if ($this->entityManager->getClassMetadata($class)->hasField('enabled')) {
+            $query->andWhere('p.enabled = :enabled')->setParameter('enabled', true);
+        }
+
+        return $query;
     }
 
     protected function formatEntity(object $entity): array

@@ -38,7 +38,12 @@ class ActionStateStore
 
     public const PRICE_RATE_PER_STORE = 600;
 
-    private const STORE_BUCKETS = ['store', 'customer_prices:store'];
+    /** customer_info: per signed-in customer and per store, per window. */
+    public const INFO_RATE_PER_CUSTOMER = 30;
+
+    public const INFO_RATE_PER_STORE = 600;
+
+    private const STORE_BUCKETS = ['store', 'customer_prices:store', 'customer_info:store'];
 
     public function __construct(
         private CacheItemPoolInterface $cache,
@@ -102,6 +107,19 @@ class ActionStateStore
         return $this->count([
             'customer_prices:store' => self::PRICE_RATE_PER_STORE,
             'customer_prices:customer:' . $customerId => self::PRICE_RATE_PER_CUSTOMER,
+        ], $now);
+    }
+
+    /**
+     * customer_info: count this call against the customer and the store.
+     *
+     * @return array{scope: string, retry_after: int}|null
+     */
+    public function customerInfoLimitHit(string $customerId, ?int $now = null): ?array
+    {
+        return $this->count([
+            'customer_info:store' => self::INFO_RATE_PER_STORE,
+            'customer_info:customer:' . $customerId => self::INFO_RATE_PER_CUSTOMER,
         ], $now);
     }
 

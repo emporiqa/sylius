@@ -28,6 +28,9 @@ class WebhookSender implements WebhookSenderInterface
      */
     private ?string $lastError = null;
 
+    /** HTTP status of the most recent sendBatch() answer; null without one. */
+    private ?int $lastStatusCode = null;
+
     public function __construct(
         private HttpClientInterface $httpClient,
         private string $webhookUrl,
@@ -38,6 +41,28 @@ class WebhookSender implements WebhookSenderInterface
         private ?EventDispatcherInterface $eventDispatcher = null,
     ) {}
 
+    /**
+     * Payloads carry order numbers, totals and the catalog, so they never go
+     * out over plain http.
+     */
+    public static function isSecureUrl(string $url): bool
+    {
+        return strtolower((string) parse_url($url, PHP_URL_SCHEME)) === 'https'
+            && (string) parse_url($url, PHP_URL_HOST) !== '';
+    }
+
+    private function insecureUrlError(): ?string
+    {
+        if (self::isSecureUrl($this->webhookUrl)) {
+            return null;
+        }
+
+        $error = 'The Emporiqa webhook_url must start with https://; nothing was sent.';
+        $this->logger?->error($error, ['url' => $this->webhookUrl]);
+
+        return $error;
+    }
+
     public function send(string $event, array $data): bool
     {
         return $this->sendBatch([['type' => $event, 'data' => $data]]);
@@ -45,6 +70,7 @@ class WebhookSender implements WebhookSenderInterface
 
     public function sendBatch(array $events): bool
     {
+        $this->lastStatusCode = null;
         if (empty($events)) {
             $this->lastError = null;
             return true;
@@ -58,6 +84,11 @@ class WebhookSender implements WebhookSenderInterface
                 $this->lastError = null;
                 return true;
             }
+        }
+
+        if ($error = $this->insecureUrlError()) {
+            $this->lastError = $error;
+            return false;
         }
 
         $payload = json_encode(['events' => $events], JSON_THROW_ON_ERROR);
@@ -83,6 +114,7 @@ class WebhookSender implements WebhookSenderInterface
                 ]);
 
                 $statusCode = $response->getStatusCode();
+                $this->lastStatusCode = $statusCode;
 
                 if ($statusCode >= 200 && $statusCode < 300) {
                     $this->logger?->info('Emporiqa webhook sent successfully', [
@@ -121,6 +153,7 @@ class WebhookSender implements WebhookSenderInterface
 
                 $lastError = sprintf('HTTP %d: %s', $statusCode, $body);
             } catch (TransportExceptionInterface | HttpExceptionInterface $e) {
+                $this->lastStatusCode = null;
                 $lastError = $e->getMessage();
                 $lastResult = [
                     'status_code' => null,
@@ -149,8 +182,12 @@ class WebhookSender implements WebhookSenderInterface
             return ['success' => false, 'error' => 'No events to send'];
         }
 
-        $payload = json_encode(['events' => $events], JSON_THROW_ON_ERROR);
         $url = rtrim($this->webhookUrl, '/') . '/' . $this->storeId . '/?dry_run=true';
+        if ($error = $this->insecureUrlError()) {
+            return ['success' => false, 'error' => $error, 'url' => $url];
+        }
+
+        $payload = json_encode(['events' => $events], JSON_THROW_ON_ERROR);
 
         $headers = $this->buildHeaders($payload);
 
@@ -184,6 +221,10 @@ class WebhookSender implements WebhookSenderInterface
     public function testConnection(): array
     {
         $url = rtrim($this->webhookUrl, '/') . '/' . $this->storeId . '/';
+        if ($error = $this->insecureUrlError()) {
+            return ['success' => false, 'error' => $error, 'url' => $url];
+        }
+
         $payload = json_encode([
             'events' => [
                 [
@@ -255,6 +296,11 @@ class WebhookSender implements WebhookSenderInterface
     public function getLastError(): ?string
     {
         return $this->lastError;
+    }
+
+    public function getLastStatusCode(): ?int
+    {
+        return $this->lastStatusCode;
     }
 
     /**

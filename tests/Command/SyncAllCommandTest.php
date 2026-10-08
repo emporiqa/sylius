@@ -57,6 +57,21 @@ class SyncAllCommandTest extends TestCase
         $this->assertStringContainsString('Syncing Pages', $tester->getDisplay());
     }
 
+    public function testSyncAllLinksTheConfiguredHost(): void
+    {
+        $application = new Application();
+        $application->add(new SyncAllCommand('https://test.emporiqa.com/webhooks/sync/'));
+        $application->add($this->createSyncCommand('emporiqa:sync:products'));
+        $application->add($this->createSyncCommand('emporiqa:sync:pages'));
+
+        $tester = new CommandTester($application->find('emporiqa:sync:all'));
+        $tester->execute([]);
+
+        $this->assertStringContainsString('Products: https://test.emporiqa.com/platform/products/', $tester->getDisplay());
+        $this->assertStringContainsString('Pages:    https://test.emporiqa.com/platform/pages/', $tester->getDisplay());
+        $this->assertStringNotContainsString('https://emporiqa.com/', $tester->getDisplay());
+    }
+
     public function testSyncAllSkipsPagesWhenCommandNotFound(): void
     {
         $application = new Application();

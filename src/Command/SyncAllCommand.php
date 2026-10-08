@@ -18,6 +18,12 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 class SyncAllCommand extends Command
 {
+    public function __construct(
+        private string $webhookUrl = '',
+    ) {
+        parent::__construct();
+    }
+
     protected function configure(): void
     {
         $this
@@ -70,7 +76,11 @@ class SyncAllCommand extends Command
 
         if ($productsResult === Command::SUCCESS && $pagesResult === Command::SUCCESS) {
             $io->success('All data synced successfully!');
-            $io->note("Emporiqa will now process and enhance the synced data. This may take a few minutes depending on the volume.\nCheck the results at:\n  Products: https://emporiqa.com/platform/products/\n  Pages:    https://emporiqa.com/platform/pages/");
+            $io->note(sprintf(
+                "Emporiqa will now process and enhance the synced data. This may take a few minutes depending on the volume.\nCheck the results at:\n  Products: %s\n  Pages:    %s",
+                AbstractSyncCommand::platformUrl($this->webhookUrl, 'platform/products/'),
+                AbstractSyncCommand::platformUrl($this->webhookUrl, 'platform/pages/'),
+            ));
             return Command::SUCCESS;
         }
 

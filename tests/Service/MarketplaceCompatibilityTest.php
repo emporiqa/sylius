@@ -654,7 +654,7 @@ class MarketplaceCompatibilityTest extends TestCase
     }
 
     /**
-     * Disabled product is out_of_stock.
+     * Disabled product is removed (its shop page is a 404).
      */
     public function testDisabledProductAvailability(): void
     {
@@ -682,11 +682,12 @@ class MarketplaceCompatibilityTest extends TestCase
         $product->method('getImages')->willReturn(new ArrayCollection());
 
         $events = $formatter->format($product);
-        $this->assertSame('out_of_stock', $events[0]['data']['availability_statuses']['DEFAULT']);
+        $this->assertSame('product.deleted', $events[0]['type']);
+        $this->assertSame('product-1', $events[0]['data']['identification_number']);
     }
 
     /**
-     * Disabled variant is out_of_stock even if product is enabled.
+     * A disabled variant of an enabled product is removed; the parent stays.
      */
     public function testDisabledVariantAvailability(): void
     {
@@ -727,9 +728,11 @@ class MarketplaceCompatibilityTest extends TestCase
         $product->method('getOptions')->willReturn(new ArrayCollection([$option]));
 
         $events = $formatter->format($product);
-        // parent + 2 variants
+        // parent + the enabled variant + the disabled one's deletion
+        $this->assertTrue($events[0]['data']['is_parent']);
+        $this->assertSame('available', $events[0]['data']['availability_statuses']['DEFAULT']);
         $this->assertSame('available', $events[1]['data']['availability_statuses']['DEFAULT']);
-        $this->assertSame('out_of_stock', $events[2]['data']['availability_statuses']['DEFAULT']);
+        $this->assertSame(['type' => 'product.deleted', 'data' => ['identification_number' => 'variation-11']], $events[2]);
     }
 
     /**
@@ -855,6 +858,7 @@ class MarketplaceCompatibilityTest extends TestCase
 
         $product = $this->createMock(ProductInterface::class);
         $product->method('getId')->willReturn(1);
+        $product->method('isEnabled')->willReturn(true);
         $product->method('getChannels')->willReturn(new ArrayCollection());
 
         $events = $formatter->format($product);

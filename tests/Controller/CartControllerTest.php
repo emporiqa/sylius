@@ -6,12 +6,16 @@ namespace Emporiqa\SyliusPlugin\Tests\Controller;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Emporiqa\SyliusPlugin\Controller\CartController;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\AbstractLogger;
+use Sylius\Component\Core\Model\ChannelInterface;
 use Sylius\Component\Core\Model\OrderInterface;
 use Sylius\Component\Core\Model\OrderItemInterface;
 use Sylius\Component\Core\Model\ProductInterface;
 use Sylius\Component\Core\Model\ProductVariantInterface;
 use Sylius\Component\Core\Repository\ProductVariantRepositoryInterface;
+use Sylius\Component\Inventory\Checker\AvailabilityCheckerInterface;
 use Sylius\Component\Order\Context\CartContextInterface;
 use Sylius\Component\Order\Context\CartNotFoundException;
 use Sylius\Component\Order\Modifier\OrderItemQuantityModifierInterface;
@@ -35,6 +39,7 @@ class CartControllerTest extends TestCase
     private RouterInterface $router;
     private CsrfTokenManagerInterface $csrfTokenManager;
     private CartController $controller;
+    private ChannelInterface $channel;
 
     protected function setUp(): void
     {
@@ -45,6 +50,7 @@ class CartControllerTest extends TestCase
         $this->variantRepository = $this->createMock(ProductVariantRepositoryInterface::class);
         $this->entityManager = $this->createMock(EntityManagerInterface::class);
         $this->router = $this->createMock(RouterInterface::class);
+        $this->channel = $this->createMock(ChannelInterface::class);
 
         $requestContext = new RequestContext();
         $requestContext->setHost('shop.example.com');
@@ -78,8 +84,45 @@ class CartControllerTest extends TestCase
         $cart->method('getTotal')->willReturn($total);
         $cart->method('getCurrencyCode')->willReturn($currency);
         $cart->method('getId')->willReturn(42);
+        $cart->method('getChannel')->willReturn($this->channel);
 
         return $cart;
+    }
+
+    /** A variant Sylius's own add-to-cart would accept: enabled, product enabled and in the cart's channel. */
+    private function sellableVariant(int $id, bool $enabled = true, bool $productEnabled = true, bool $inChannel = true): ProductVariantInterface
+    {
+        $product = $this->createMock(ProductInterface::class);
+        $product->method('isEnabled')->willReturn($productEnabled);
+        $product->method('hasChannel')->willReturnCallback(fn ($channel): bool => $inChannel && $channel === $this->channel);
+
+        $variant = $this->createMock(ProductVariantInterface::class);
+        $variant->method('getId')->willReturn($id);
+        $variant->method('getCode')->willReturn('VARIANT_' . $id);
+        $variant->method('isEnabled')->willReturn($enabled);
+        $variant->method('getProduct')->willReturn($product);
+
+        return $variant;
+    }
+
+    private function controllerWithStock(AvailabilityCheckerInterface $checker, int $limit = 9999): CartController
+    {
+        return new CartController(
+            $this->cartContext,
+            $this->orderModifier,
+            $this->orderItemQuantityModifier,
+            $this->orderItemFactory,
+            $this->variantRepository,
+            $this->entityManager,
+            $this->router,
+            null,
+            $this->csrfTokenManager,
+            null,
+            true,
+            '/media/image/',
+            $checker,
+            $limit,
+        );
     }
 
     private function createMockOrderItem(int $variantId, int $quantity = 1, int $unitPrice = 1999): OrderItemInterface
@@ -180,8 +223,7 @@ class CartControllerTest extends TestCase
         $cart = $this->createMockCart([], 1999, 'EUR');
         $this->cartContext->method('getCart')->willReturn($cart);
 
-        $variant = $this->createMock(ProductVariantInterface::class);
-        $variant->method('getId')->willReturn(456);
+        $variant = $this->sellableVariant(456);
         $this->variantRepository->method('find')->with(456)->willReturn($variant);
 
         $newOrderItem = $this->createMock(OrderItemInterface::class);
@@ -228,8 +270,7 @@ class CartControllerTest extends TestCase
         $this->cartContext->method('getCart')->willReturn($cart);
         $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
 
-        $variant = $this->createMock(ProductVariantInterface::class);
-        $variant->method('getId')->willReturn(456);
+        $variant = $this->sellableVariant(456);
         $this->variantRepository->method('find')->with(456)->willReturn($variant);
 
         $this->orderItemQuantityModifier
@@ -268,8 +309,7 @@ class CartControllerTest extends TestCase
         $this->cartContext->method('getCart')->willReturn($cart);
         $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
 
-        $variant = $this->createMock(ProductVariantInterface::class);
-        $variant->method('getId')->willReturn(456);
+        $variant = $this->sellableVariant(456);
         $this->variantRepository->method('find')->with(456)->willReturn($variant);
 
         $this->orderModifier
@@ -501,8 +541,7 @@ class CartControllerTest extends TestCase
         $cart = $this->createMockCart([], 1999, 'EUR');
         $this->cartContext->method('getCart')->willReturn($cart);
 
-        $variant = $this->createMock(ProductVariantInterface::class);
-        $variant->method('getId')->willReturn(456);
+        $variant = $this->sellableVariant(456);
         $this->variantRepository->method('find')->with(456)->willReturn($variant);
 
         $newOrderItem = $this->createMock(OrderItemInterface::class);
@@ -522,9 +561,8 @@ class CartControllerTest extends TestCase
         $cart = $this->createMockCart([], 1999, 'EUR');
         $this->cartContext->method('getCart')->willReturn($cart);
 
-        $variant = $this->createMock(ProductVariantInterface::class);
-        $variant->method('getId')->willReturn(789);
-        $this->variantRepository->method('findOneBy')->with(['product' => 10])->willReturn($variant);
+        $variant = $this->sellableVariant(789);
+        $this->variantRepository->method('findOneBy')->with(['product' => 10, 'enabled' => true], ['position' => 'ASC'])->willReturn($variant);
 
         $newOrderItem = $this->createMock(OrderItemInterface::class);
         $this->orderItemFactory->method('createNew')->willReturn($newOrderItem);
@@ -543,8 +581,7 @@ class CartControllerTest extends TestCase
         $cart = $this->createMockCart([], 1999, 'EUR');
         $this->cartContext->method('getCart')->willReturn($cart);
 
-        $variant = $this->createMock(ProductVariantInterface::class);
-        $variant->method('getId')->willReturn(123);
+        $variant = $this->sellableVariant(123);
         $this->variantRepository->method('findOneBy')->with(['code' => 'PHONE_RED'])->willReturn($variant);
 
         $newOrderItem = $this->createMock(OrderItemInterface::class);
@@ -565,8 +602,7 @@ class CartControllerTest extends TestCase
         $cart = $this->createMockCart([$orderItem], 5997, 'EUR');
         $this->cartContext->method('getCart')->willReturn($cart);
 
-        $variant = $this->createMock(ProductVariantInterface::class);
-        $variant->method('getId')->willReturn(456);
+        $variant = $this->sellableVariant(456);
         $this->variantRepository->method('find')->with(456)->willReturn($variant);
 
         $this->orderItemQuantityModifier
@@ -589,8 +625,7 @@ class CartControllerTest extends TestCase
         $cart = $this->createMockCart([], 0, 'EUR');
         $this->cartContext->method('getCart')->willReturn($cart);
 
-        $variant = $this->createMock(ProductVariantInterface::class);
-        $variant->method('getId')->willReturn(456);
+        $variant = $this->sellableVariant(456);
         $this->variantRepository->method('find')->with(456)->willReturn($variant);
 
         $newOrderItem = $this->createMock(OrderItemInterface::class);
@@ -679,8 +714,7 @@ class CartControllerTest extends TestCase
         $cart = $this->createMockCart([], 0, 'EUR');
         $this->cartContext->method('getCart')->willReturn($cart);
 
-        $variant = $this->createMock(ProductVariantInterface::class);
-        $variant->method('getId')->willReturn(999);
+        $variant = $this->sellableVariant(999);
         $this->variantRepository->method('find')->with(999)->willReturn($variant);
 
         $body = json_encode(['variation_id' => 999, 'quantity' => 3]);
@@ -691,5 +725,210 @@ class CartControllerTest extends TestCase
         $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
         $data = json_decode($response->getContent(), true);
         $this->assertSame('Item not found in cart', $data['error']);
+    }
+
+    public static function unsellableVariants(): array
+    {
+        return [
+            'disabled variant' => [false, true, true],
+            'disabled product' => [true, false, true],
+            'product not in the cart channel' => [true, true, false],
+        ];
+    }
+
+    #[DataProvider('unsellableVariants')]
+    public function testAddRefusesAVariantTheShopWouldNotSell(bool $enabled, bool $productEnabled, bool $inChannel): void
+    {
+        $this->cartContext->method('getCart')->willReturn($this->createMockCart());
+        $this->variantRepository->method('find')->with(456)->willReturn($this->sellableVariant(456, $enabled, $productEnabled, $inChannel));
+        $this->orderModifier->expects($this->never())->method('addToOrder');
+        $this->entityManager->expects($this->never())->method('flush');
+
+        $body = json_encode(['items' => [['variation_id' => 'variation-456', 'quantity' => 1]]]);
+        $response = $this->controller->add(Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body));
+
+        $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+        $this->assertSame('Variant variation-456 not found', json_decode($response->getContent(), true)['error']);
+    }
+
+    #[DataProvider('unsellableVariants')]
+    public function testUpdateRefusesAVariantTheShopWouldNotSell(bool $enabled, bool $productEnabled, bool $inChannel): void
+    {
+        $this->cartContext->method('getCart')->willReturn($this->createMockCart([$this->createMockOrderItem(456, 1)]));
+        $this->variantRepository->method('find')->with(456)->willReturn($this->sellableVariant(456, $enabled, $productEnabled, $inChannel));
+        $this->orderItemQuantityModifier->expects($this->never())->method('modify');
+
+        $body = json_encode(['variation_id' => 456, 'quantity' => 2]);
+        $response = $this->controller->update(Request::create('/emporiqa/api/cart/update', 'POST', [], [], [], [], $body));
+
+        $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+    }
+
+    public function testAddRefusesACartWithoutAChannel(): void
+    {
+        $cart = $this->createMock(OrderInterface::class);
+        $cart->method('getItems')->willReturn(new \Doctrine\Common\Collections\ArrayCollection());
+        $cart->method('getChannel')->willReturn(null);
+        $this->cartContext->method('getCart')->willReturn($cart);
+        $this->variantRepository->method('find')->willReturn($this->sellableVariant(456));
+
+        $body = json_encode(['items' => [['variation_id' => 456, 'quantity' => 1]]]);
+        $response = $this->controller->add(Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body));
+
+        $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+    }
+
+    public function testAddChecksStockForTheCartQuantityPlusTheAddedOne(): void
+    {
+        $this->cartContext->method('getCart')->willReturn($this->createMockCart([$this->createMockOrderItem(456, 2)]));
+        $variant = $this->sellableVariant(456);
+        $this->variantRepository->method('find')->with(456)->willReturn($variant);
+        $checker = $this->createMock(AvailabilityCheckerInterface::class);
+        $checker->expects($this->once())->method('isStockSufficient')->with($variant, 5)->willReturn(false);
+        $this->orderItemQuantityModifier->expects($this->never())->method('modify');
+        $this->entityManager->expects($this->never())->method('flush');
+
+        $body = json_encode(['items' => [['variation_id' => 456, 'quantity' => 3]]]);
+        $response = $this->controllerWithStock($checker)->add(Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body));
+
+        $this->assertSame(Response::HTTP_UNPROCESSABLE_ENTITY, $response->getStatusCode());
+        $this->assertSame('Not enough stock for VARIANT_456', json_decode($response->getContent(), true)['error']);
+    }
+
+    public function testAddWithEnoughStockAddsTheItem(): void
+    {
+        $this->cartContext->method('getCart')->willReturn($this->createMockCart());
+        $this->variantRepository->method('find')->with(456)->willReturn($this->sellableVariant(456));
+        $this->orderItemFactory->method('createNew')->willReturn($this->createMock(OrderItemInterface::class));
+        $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
+        $checker = $this->createMock(AvailabilityCheckerInterface::class);
+        $checker->method('isStockSufficient')->willReturn(true);
+        $this->orderModifier->expects($this->once())->method('addToOrder');
+
+        $body = json_encode(['items' => [['variation_id' => 456, 'quantity' => 2]]]);
+        $response = $this->controllerWithStock($checker)->add(Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body));
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testAddRefusedForOneItemChangesNothingInTheCart(): void
+    {
+        $this->cartContext->method('getCart')->willReturn($this->createMockCart());
+        $variants = [456 => $this->sellableVariant(456), 789 => $this->sellableVariant(789, false)];
+        $this->variantRepository->method('find')->willReturnCallback(fn ($id) => $variants[$id] ?? null);
+        $this->orderItemFactory->method('createNew')->willReturn($this->createMock(OrderItemInterface::class));
+        $this->orderModifier->expects($this->never())->method('addToOrder');
+        $this->orderItemQuantityModifier->expects($this->never())->method('modify');
+
+        $body = json_encode(['items' => [['variation_id' => 456, 'quantity' => 1], ['variation_id' => 789, 'quantity' => 1]]]);
+        $response = $this->controller->add(Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body));
+
+        $this->assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+    }
+
+    public function testAddRefusesAQuantityAboveTheSyliusLimit(): void
+    {
+        $this->cartContext->method('getCart')->willReturn($this->createMockCart());
+        $this->variantRepository->method('find')->willReturn($this->sellableVariant(456));
+        $this->orderModifier->expects($this->never())->method('addToOrder');
+
+        $body = json_encode(['items' => [['variation_id' => 456, 'quantity' => 99999]]]);
+        $response = $this->controller->add(Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body));
+
+        $this->assertSame(Response::HTTP_UNPROCESSABLE_ENTITY, $response->getStatusCode());
+        $this->assertSame('Quantity must be between 1 and 9999', json_decode($response->getContent(), true)['error']);
+    }
+
+    public function testUpdateRefusesAQuantityAboveTheConfiguredLimit(): void
+    {
+        $this->cartContext->method('getCart')->willReturn($this->createMockCart([$this->createMockOrderItem(456, 1)]));
+        $this->variantRepository->method('find')->willReturn($this->sellableVariant(456));
+        $this->orderItemQuantityModifier->expects($this->never())->method('modify');
+        $checker = $this->createMock(AvailabilityCheckerInterface::class);
+        $checker->method('isStockSufficient')->willReturn(true);
+
+        $body = json_encode(['variation_id' => 456, 'quantity' => 51]);
+        $response = $this->controllerWithStock($checker, 50)->update(Request::create('/emporiqa/api/cart/update', 'POST', [], [], [], [], $body));
+
+        $this->assertSame(Response::HTTP_UNPROCESSABLE_ENTITY, $response->getStatusCode());
+    }
+
+    public function testUpdateRaisingAboveStockIsRefused(): void
+    {
+        $this->cartContext->method('getCart')->willReturn($this->createMockCart([$this->createMockOrderItem(456, 1)]));
+        $variant = $this->sellableVariant(456);
+        $this->variantRepository->method('find')->willReturn($variant);
+        $checker = $this->createMock(AvailabilityCheckerInterface::class);
+        $checker->expects($this->once())->method('isStockSufficient')->with($variant, 4)->willReturn(false);
+        $this->orderItemQuantityModifier->expects($this->never())->method('modify');
+
+        $body = json_encode(['variation_id' => 456, 'quantity' => 4]);
+        $response = $this->controllerWithStock($checker)->update(Request::create('/emporiqa/api/cart/update', 'POST', [], [], [], [], $body));
+
+        $this->assertSame(Response::HTTP_UNPROCESSABLE_ENTITY, $response->getStatusCode());
+    }
+
+    public function testUpdateLoweringIsAllowedWhateverTheStock(): void
+    {
+        $orderItem = $this->createMockOrderItem(456, 5);
+        $this->cartContext->method('getCart')->willReturn($this->createMockCart([$orderItem]));
+        $this->variantRepository->method('find')->willReturn($this->sellableVariant(456));
+        $this->router->method('generate')->willReturn('https://shop.example.com/checkout');
+        $checker = $this->createMock(AvailabilityCheckerInterface::class);
+        $checker->expects($this->never())->method('isStockSufficient');
+        $this->orderItemQuantityModifier->expects($this->once())->method('modify')->with($orderItem, 2);
+
+        $body = json_encode(['variation_id' => 456, 'quantity' => 2]);
+        $response = $this->controllerWithStock($checker)->update(Request::create('/emporiqa/api/cart/update', 'POST', [], [], [], [], $body));
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testRemoveStillWorksForADisabledVariant(): void
+    {
+        $orderItem = $this->createMockOrderItem(456, 1);
+        $this->cartContext->method('getCart')->willReturn($this->createMockCart([$orderItem]));
+        $this->variantRepository->method('find')->willReturn($this->sellableVariant(456, false));
+        $this->orderModifier->expects($this->once())->method('removeFromOrder');
+
+        $body = json_encode(['variation_id' => 456]);
+        $response = $this->controller->remove(Request::create('/emporiqa/api/cart/remove', 'POST', [], [], [], [], $body));
+
+        $this->assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testAFailedAddLogsTheExceptionClassNotItsMessage(): void
+    {
+        $this->cartContext->method('getCart')->willReturn($this->createMockCart());
+        $this->variantRepository->method('find')->willReturn($this->sellableVariant(456));
+        $this->orderItemFactory->method('createNew')->willReturn($this->createMock(OrderItemInterface::class));
+        $this->entityManager->method('flush')->willThrowException(new \RuntimeException('SQLSTATE[23000] with params [42, "secret"]'));
+        $logger = new class extends AbstractLogger {
+            public array $records = [];
+
+            public function log($level, \Stringable|string $message, array $context = []): void
+            {
+                $this->records[] = [(string) $message, $context];
+            }
+        };
+        $controller = new CartController(
+            $this->cartContext,
+            $this->orderModifier,
+            $this->orderItemQuantityModifier,
+            $this->orderItemFactory,
+            $this->variantRepository,
+            $this->entityManager,
+            $this->router,
+            $logger,
+            $this->csrfTokenManager,
+        );
+
+        $body = json_encode(['items' => [['variation_id' => 456, 'quantity' => 1]]]);
+        $controller->add(Request::create('/emporiqa/api/cart/add', 'POST', [], [], [], [], $body));
+
+        $this->assertCount(1, $logger->records);
+        [$message, $context] = $logger->records[0];
+        $this->assertSame(\RuntimeException::class, $context['exception_class']);
+        $this->assertStringNotContainsString('SQLSTATE', $message . json_encode($context));
     }
 }

@@ -7,6 +7,7 @@ namespace Emporiqa\SyliusPlugin\Tests\Controller;
 use Doctrine\Common\Collections\ArrayCollection;
 use Emporiqa\SyliusPlugin\Controller\ActionController;
 use Emporiqa\SyliusPlugin\Service\ActionStateStore;
+use Emporiqa\SyliusPlugin\Service\CustomerInfo;
 use Emporiqa\SyliusPlugin\Service\CustomerPrices;
 use Emporiqa\SyliusPlugin\Service\OrderStatusLookup;
 use Emporiqa\SyliusPlugin\Service\SignatureHelper;
@@ -42,7 +43,7 @@ class ActionControllerTest extends TestCase
         $this->cache = new ArrayAdapter();
     }
 
-    private function controller(string $secret = self::SECRET, ?CustomerPrices $prices = null, ?AbstractLogger $logger = null): ActionController
+    private function controller(string $secret = self::SECRET, ?CustomerPrices $prices = null, ?AbstractLogger $logger = null, ?CustomerInfo $info = null): ActionController
     {
         return new ActionController(
             $secret,
@@ -51,7 +52,127 @@ class ActionControllerTest extends TestCase
             new ActionStateStore($this->cache),
             $logger,
             $prices,
+            $info,
         );
+    }
+
+    private function infoPayload(string $requestId = 'i-1', string $customerId = '77'): array
+    {
+        return ['rule' => 'customer_info', 'request_id' => $requestId, 'customer' => ['id' => $customerId]];
+    }
+
+    private function infoRequest(array $payload, array $secrets = [self::SECRET]): Request
+    {
+        return $this->request($payload, $secrets, null, '/emporiqa/api/actions/customer-info');
+    }
+
+    public function testCustomerInfoIsSignedBothWays(): void
+    {
+        $info = $this->createMock(CustomerInfo::class);
+        $info->expects($this->once())->method('handle')->willReturn(['status' => 'found', 'data' => ['customer' => ['name' => 'Anna'], 'orders' => []]]);
+        $controller = $this->controller(self::SECRET, null, null, $info);
+
+        $unsigned = Request::create('/emporiqa/api/actions/customer-info', 'POST', [], [], [], [], (string) json_encode($this->infoPayload()));
+        $this->assertSame(401, $controller->customerInfo($unsigned)->getStatusCode());
+        $this->assertSame(401, $controller->customerInfo($this->infoRequest($this->infoPayload(), ['another-secret']))->getStatusCode());
+
+        $response = $controller->customerInfo($this->infoRequest($this->infoPayload()));
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('{"status":"found","data":{"customer":{"name":"Anna"},"orders":[]}}', $response->getContent());
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        $this->assertSignedResponse($response, 'i-1');
+    }
+
+    /** During a secret change Emporiqa signs with both; either must do. */
+    public function testCustomerInfoAcceptsTheOldSecretDuringAChange(): void
+    {
+        $info = $this->createMock(CustomerInfo::class);
+        $info->method('handle')->willReturn(['status' => 'not_found']);
+
+        $response = $this->controller(self::SECRET, null, null, $info)->customerInfo($this->infoRequest($this->infoPayload(), ['the-new-secret', self::SECRET]));
+
+        $this->assertSame(200, $response->getStatusCode());
+    }
+
+    public function testCustomerInfoRuleOnlyAnswersOnItsOwnEndpoint(): void
+    {
+        $info = $this->createMock(CustomerInfo::class);
+        $info->expects($this->never())->method('handle');
+        $controller = $this->controller(self::SECRET, null, null, $info);
+
+        $this->assertSame(404, $controller->orderStatus($this->request($this->infoPayload()))->getStatusCode());
+        $this->assertSame(404, $controller->customerInfo($this->infoRequest($this->pricesPayload()))->getStatusCode());
+    }
+
+    public function testCustomerInfoIsOffWithoutTheService(): void
+    {
+        $response = $this->controller()->customerInfo($this->infoRequest($this->infoPayload()));
+
+        $this->assertSame(404, $response->getStatusCode());
+        $this->assertSame('disabled', $this->json($response)['message_code']);
+    }
+
+    /** Emporiqa's retry of one request_id gets the same bytes, looked up once and not counted. */
+    public function testCustomerInfoReplaysARequestId(): void
+    {
+        $info = $this->createMock(CustomerInfo::class);
+        $info->expects($this->once())->method('handle')->willReturn(['status' => 'found', 'data' => ['orders' => []]]);
+        $controller = $this->controller(self::SECRET, null, null, $info);
+
+        $first = $controller->customerInfo($this->infoRequest($this->infoPayload('same')));
+        $second = $controller->customerInfo($this->infoRequest($this->infoPayload('same')));
+
+        $this->assertSame($first->getContent(), $second->getContent());
+        $this->assertSignedResponse($second, 'same');
+    }
+
+    /** A reused request_id with another body (another customer) is a new call, never another customer's answer. */
+    public function testAReusedRequestIdWithAnotherBodyIsNotReplayed(): void
+    {
+        $info = $this->createMock(CustomerInfo::class);
+        $info->expects($this->exactly(2))->method('handle')->willReturnCallback(
+            fn (array $payload): array => ['status' => 'found', 'data' => ['customer' => ['name' => 'Customer ' . $payload['customer']['id']]]],
+        );
+        $controller = $this->controller(self::SECRET, null, null, $info);
+
+        $first = $controller->customerInfo($this->infoRequest($this->infoPayload('reused', '77')));
+        $second = $controller->customerInfo($this->infoRequest($this->infoPayload('reused', '78')));
+
+        $this->assertSame('Customer 77', $this->json($first)['data']['customer']['name']);
+        $this->assertSame('Customer 78', $this->json($second)['data']['customer']['name']);
+    }
+
+    public function testCustomerInfoIsRateLimitedPerCustomer(): void
+    {
+        $info = $this->createMock(CustomerInfo::class);
+        $info->method('handle')->willReturn(['status' => 'found', 'data' => []]);
+        $controller = $this->controller(self::SECRET, null, null, $info);
+
+        for ($i = 0; $i < ActionStateStore::INFO_RATE_PER_CUSTOMER; ++$i) {
+            $this->assertSame(200, $controller->customerInfo($this->infoRequest($this->infoPayload('i' . $i)))->getStatusCode());
+        }
+        $limited = $controller->customerInfo($this->infoRequest($this->infoPayload('i-over')));
+        $other = $controller->customerInfo($this->infoRequest($this->infoPayload('i-other', '78')));
+
+        $this->assertSame(429, $limited->getStatusCode());
+        $this->assertSame(['scope' => 'value'], $this->json($limited)['data']);
+        $this->assertNotEmpty($limited->headers->get('Retry-After'));
+        $this->assertSignedResponse($limited, 'i-over');
+        $this->assertSame(200, $other->getStatusCode(), 'another customer has their own bucket');
+    }
+
+    public function testCustomerInfoHasItsOwnStoreCeiling(): void
+    {
+        $state = new ActionStateStore($this->cache);
+        $now = time();
+        for ($i = 0; $i < ActionStateStore::INFO_RATE_PER_STORE; ++$i) {
+            $state->customerInfoLimitHit('c' . $i, $now);
+        }
+
+        $this->assertSame('store', $state->customerInfoLimitHit('fresh', $now)['scope']);
+        $this->assertNull($state->customerPriceLimitHit('fresh', $now), 'customer_prices has its own store ceiling');
+        $this->assertNull($state->rateLimitHit('42', 'a@example.com', $now), 'order_status has its own store ceiling');
     }
 
     private function logger(): AbstractLogger

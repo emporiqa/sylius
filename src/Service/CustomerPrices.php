@@ -55,13 +55,22 @@ class CustomerPrices
     ) {}
 
     /**
-     * The verified customer id, '' when missing or not an id.
+     * The verified customer id as a canonical digit string ("0077" is
+     * "77"), '' when missing or not a positive integer. Only an int or a
+     * digit string counts: a boolean or a float is not an id.
      */
     public static function customerId(array $payload): string
     {
         $id = $payload['customer']['id'] ?? null;
+        if (is_int($id)) {
+            $id = (string) $id;
+        }
+        if (!is_string($id) || $id === '' || strlen($id) > 18 || !ctype_digit($id)) {
+            return '';
+        }
+        $id = ltrim($id, '0');
 
-        return is_scalar($id) && ctype_digit((string) $id) ? (string) $id : '';
+        return $id;
     }
 
     /**
