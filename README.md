@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/packagist/l/emporiqa/sylius-plugin.svg)](LICENSE)
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D8.1-8892BF.svg)](composer.json)
 
-Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), an AI chatbot that works as an online salesperson on your storefront. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order status lookups, and order completion webhooks.
+Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), AI chat that sells before the purchase and serves after it, and lets your team take over the chat when a shopper needs a person. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order status lookups, and order completion webhooks.
 
 The chat reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and drives cart and checkout through the plugin's APIs. It answers in 65+ languages, whichever locale the shopper writes in.
 
@@ -255,7 +255,7 @@ Product, variant and page changes reach Emporiqa automatically through Sylius re
 
 ## Pricing
 
-The plugin is free. Emporiqa is Pay-as-you-go: you pay only when the chat talks to a shopper. $0/month base + $0.25/conversation, +$0.15 per voice conversation (optional, off by default). New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. After the credit, the monthly cap defaults to $59 and is customer-adjustable from the billing dashboard. Prices exclude VAT. Enterprise option for catalogs over 100,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
+The plugin is free. Emporiqa is Pay-as-you-go: you pay only when the chat talks to a shopper. $0/month base + $0.25/conversation, +$0.15 per voice conversation (optional, off by default). New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. You set a monthly spending limit on the billing page and can raise, lower or remove it. Prices exclude VAT. Enterprise option for catalogs over 100,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
 
 ## Support
 
