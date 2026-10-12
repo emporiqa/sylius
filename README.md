@@ -26,6 +26,7 @@ Everything beyond this page lives in the full developer documentation at [empori
 - **Multi-Channel**: Consolidated events with per-channel pricing, availability, and content across all languages
 - **Cart & Checkout**: REST API for in-chat cart operations (add, update, remove, clear, view, checkout URL) with event hooks
 - **Order Status rule**: Emporiqa's ready-made Order status rule looks orders up through a signed, rate-limited endpoint; a signed-in shopper gives only the number of an order they placed signed in
+- **Signed-in customers**: a signed-in shopper sees the price your shop calculates for them, is greeted by first name, and is not asked for a name or email when the chat passes them to your team
 - **Other ready-made rules**: under Settings > Rules in Emporiqa, returns, cancellations, order changes, quotes and invoice requests go to your team by email
 - **Customer info**: the plugin tells Emporiqa a signed-in shopper's name, email and newest orders (`actions/customer-info`). Emporiqa uses it to answer "where is my order?" with their newest order when they give no number, and to fill in their email in your rules
 - **Order Completion**: Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
