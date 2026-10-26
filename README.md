@@ -5,9 +5,11 @@
 [![License](https://img.shields.io/packagist/l/emporiqa/sylius-plugin.svg)](LICENSE)
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D8.1-8892BF.svg)](composer.json)
 
-Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), AI chat that sells before the purchase and serves after it, and lets your team take over the chat when a shopper needs a person. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order status lookups, and order completion webhooks.
+Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), an AI shop assistant for sales and support, in the chat on your shop and in your shop's customer emails, working with your team: a person can take over any chat. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order status lookups, and order completion webhooks.
 
-The chat reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and drives cart and checkout through the plugin's APIs. It answers in 65+ languages, whichever locale the shopper writes in.
+The chat reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and drives cart and checkout through the plugin's APIs. It answers in 65 languages, whichever the shopper writes in.
+
+Emporiqa also drafts replies to your shop's customer emails: connect your shop's mailbox (Gmail, Google Workspace, Microsoft 365, Outlook.com, IONOS, Strato, OVHcloud or any IMAP mailbox) in your Emporiqa dashboard and it drafts each reply from your catalog and pages, in the customer's language. Order details in drafts, and automatic replies, work on Gmail, Google Workspace and Microsoft (Outlook.com and Microsoft 365). Automatic replies are off until you switch them on. They cover only topics your team has already answered many times without changing the draft, and each waits 10 minutes so anyone can stop it. Every other reply is a draft your team checks and sends from your own address. Emporiqa never refunds, cancels or changes an order. Nothing to set up in Sylius.
 
 Try it yourself on the [live demo store](https://demo.emporiqa.com), or watch the [30-second demo](https://www.youtube.com/watch?v=y7ARSIUxuXI) (a shopper's question, the recommendation, the cart).
 
@@ -34,7 +36,7 @@ Everything beyond this page lives in the full developer documentation at [empori
 - **Visual Search**: Shoppers upload a photo in the widget; the chat matches it against your synced Sylius catalog (no extra config required)
 - **Voice Conversations** (optional, off by default): the shopper taps the microphone, speaks, and hears the answer read aloud while the product cards stay on screen. $0.15 more per voice conversation
 - **Widget Appearance**: up to four starter questions per language under the welcome message, your store's picture in the chat header and next to the chat's answers, and your team's own names and photos on their replies
-- **Multi-language**: Syncs content in all configured Sylius locales with currency switcher support. The chat itself answers in 65+ languages, independent of which locales you sync. A locale left out of `enabled_languages` is not synced, and its pages show no chat
+- **Multi-language**: Syncs content in all configured Sylius locales with currency switcher support. The chat itself answers in 65 languages, independent of which locales you sync. A locale left out of `enabled_languages` is not synced, and its pages show no chat
 - **Console Commands**: Memory-efficient sync commands with batching, dry-run, and session management
 - **Webhook Retry**: Automatic retry with backoff for transient failures; changes Emporiqa did not accept (down, a wrong secret) are kept and sent again with the next change
 - **Only what the shop shows**: a disabled product, variant or page is removed from Emporiqa, so the chat never links a page your shop answers with 404
@@ -47,14 +49,25 @@ Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, Shop
 - PHP 8.1+ (Sylius 2.3 itself needs PHP 8.3+, and Symfony 8 needs PHP 8.4+)
 - Sylius 1.12 or later 1.x, or Sylius 2.0 to 2.3
 - Symfony 6.4, 7.x or 8.x (6.0 to 6.3 are not supported)
+- An Emporiqa account ([sign up](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin))
 
 Checked on Sylius 2.3 with Symfony 8.1 and PHP 8.4, Sylius 2.2 with Symfony
 7.4 and PHP 8.3, and Sylius 1.12 with Symfony 6.4 and PHP 8.1. Sylius 1.12
 and 1.13 no longer get security fixes, and a current Composer refuses to
 install them unless their advisories are ignored: upgrade Sylius first.
-- An Emporiqa account ([sign up](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin))
 
 ## Installation
+
+There is no Sylius admin screen yet: setup is done by your developer in configuration. The plugin adds no database tables, so there are no migrations to run. The steps, each detailed below:
+
+1. `composer require emporiqa/sylius-plugin`
+2. Register the bundle in `config/bundles.php`, if Symfony Flex has not added it
+3. Import the plugin's routes in `config/routes/emporiqa.yaml`
+4. Create `config/packages/emporiqa.yaml`, reading the store id, webhook URL and webhook secret from environment variables
+5. Set `EMPORIQA_STORE_ID`, `EMPORIQA_WEBHOOK_URL` and `EMPORIQA_WEBHOOK_SECRET` (from your Emporiqa dashboard) and `SITE_URL` in `.env`
+6. Add the chat widget to your shop layout, then run `bin/console assets:install` and `bin/console cache:clear`
+7. Run `bin/console emporiqa:test-connection`, then `bin/console emporiqa:sync:all`
+8. Test the chat in your Emporiqa dashboard and press **Go live**
 
 ```bash
 composer require emporiqa/sylius-plugin
@@ -88,10 +101,12 @@ Create `config/packages/emporiqa.yaml`:
 
 ```yaml
 emporiqa:
+    store_id: '%env(EMPORIQA_STORE_ID)%'
+    webhook_url: '%env(EMPORIQA_WEBHOOK_URL)%'
     webhook_secret: '%env(EMPORIQA_WEBHOOK_SECRET)%'
 ```
 
-All other settings have sensible defaults. See the [Configuration Reference](https://emporiqa.com/docs/sylius/#configuration) for the full list.
+These three are required. All other settings have sensible defaults. See the [Configuration Reference](https://emporiqa.com/docs/sylius/#configuration) for the full list.
 
 ### Environment Variables
 
@@ -145,7 +160,7 @@ And in `.env`:
 SITE_URL=https://your-store.com
 ```
 
-Verify the connection with `bin/console emporiqa:test-connection`, then run a first full sync with `bin/console emporiqa:sync:all`. The [developer documentation](https://emporiqa.com/docs/sylius/) has the widget variants and the rest of the reference.
+Verify the connection with `bin/console emporiqa:test-connection`, then run a first full sync with `bin/console emporiqa:sync:all`. When the sync is done, test the chat in your [Emporiqa dashboard](https://emporiqa.com/platform/) and press **Go live**. New stores start with the chat off, so shoppers see nothing until you do. You can also set it up from Claude or ChatGPT: connect your assistant and it creates your store, sets up the chat and walks you through the install ([emporiqa.com/docs/ai-assistants/](https://emporiqa.com/docs/ai-assistants/)); you install the plugin and press Go live yourself. The [developer documentation](https://emporiqa.com/docs/sylius/) has the widget variants and the rest of the reference.
 
 ## Order status
 
@@ -256,7 +271,7 @@ Product, variant and page changes reach Emporiqa automatically through Sylius re
 
 ## Pricing
 
-The plugin is free. Emporiqa is Pay-as-you-go: you pay only when the chat talks to a shopper. $0/month base + $0.25/conversation, +$0.15 per voice conversation (optional, off by default). New accounts get $25 of signup credit (about 100 conversations on us), no card required at signup. You set a monthly spending limit on the billing page and can raise, lower or remove it. Prices exclude VAT. Enterprise option for catalogs over 100,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
+The plugin is free. Emporiqa is Pay-as-you-go: $0.25 per conversation and $0.15 per AI-drafted email reply you send, +$0.15 per voice conversation (optional, off by default). New stores get $25 of signup credit (about 100 conversations, once), no card required at signup. No seat fees, and AI model costs are included. You set a monthly limit on the billing page (new stores start at $199): a ceiling, not a charge, which you can raise, lower or clear. At the limit the chat is hidden from your shop and charging stops. Prices exclude VAT. Enterprise option for catalogs over 100,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
 
 ## Support
 
@@ -271,4 +286,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Who makes Emporiqa
 
-Emporiqa is built by [Rosel Group LTD](https://emporiqa.com/about/), an EU company based in Sofia, Bulgaria, founded by [Rosen Hristov](https://www.linkedin.com/in/rosen-hristov/), who has built e-commerce software for 15 years. It is GDPR-compliant and never uses shopper data to train AI models. This plugin is listed on [Sylius Addons](https://addons.sylius.com/en_US/products/emporiqa), which reviews every submission before it goes on the shelf, and it installs from Packagist with Composer.
+Emporiqa is built by [Rosel Group LTD](https://emporiqa.com/about/), an EU company based in Sofia, Bulgaria, founded by [Rosen Hristov](https://www.linkedin.com/in/rosen-hristov/), who has built e-commerce software for 15 years. He works with every store himself, before and after the sale. It is GDPR-compliant and never uses shopper data to train AI models. This plugin is listed on [Sylius Addons](https://addons.sylius.com/en_US/products/emporiqa), which reviews every submission before it goes on the shelf, and it installs from Packagist with Composer.

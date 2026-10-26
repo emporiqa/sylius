@@ -1,7 +1,7 @@
 {
     "name": "emporiqa/sylius-plugin",
     "type": "sylius-plugin",
-    "description": "Integrates Sylius with Emporiqa, an AI chatbot that works as an online salesperson on your storefront.",
+    "description": "Integrates Sylius with Emporiqa, an AI shop assistant for sales and support in your shop's chat and customer emails.",
     "license": "MIT",
     "keywords": [
         "sylius",
