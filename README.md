@@ -33,6 +33,7 @@ Everything beyond this page lives in the full developer documentation at [empori
 - **Customer info**: the plugin tells Emporiqa a signed-in shopper's name, email and newest orders (`actions/customer-info`). Emporiqa uses it to answer "where is my order?" with their newest order when they give no number, and to fill in their email in your rules
 - **Order Completion**: Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
 - **Chat Widget**: Cache-safe embeddable chat widget with currency/channel awareness and no inline script (a `script-src` without `'unsafe-inline'` allows it); a signed-in shopper's token comes from an uncached endpoint, never from the page
+- **Put the chat on your pages**: a question link, a chat link or a chat page in your page content or product template opens the chat (see [Put the chat on your pages](#put-the-chat-on-your-pages))
 - **Visual Search**: Shoppers upload a photo in the widget; the chat matches it against your synced Sylius catalog (no extra config required)
 - **Voice Conversations** (optional, off by default): the shopper taps the microphone, speaks, and hears the answer read aloud while the product cards stay on screen. $0.15 more per voice conversation
 - **Widget Appearance**: up to four starter questions per language under the welcome message, your store's picture in the chat header and next to the chat's answers, and your team's own names and photos on their replies
