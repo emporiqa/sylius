@@ -14,16 +14,26 @@
  *   {type: 'EMPORIQA_CUSTOMER_TOKEN', token: '<token>' | ''}
  * ('' for a guest).
  *
- * A guest (window.emporiqaTokenConfig.authenticated false) is answered ''
- * at once, with no request. A signed-in shopper costs one uncached POST to
- * the token endpoint; the answer is reused for at most five minutes, so a
- * tab left open never hands the widget an expired token or one from a
- * session that has since signed out. A failed answer is never reused.
+ * The endpoint URL comes from this script tag's data-emporiqa-config, so
+ * the page needs no inline script and says nothing about the shopper. The
+ * chat opening costs one uncached POST to the token endpoint (a guest gets
+ * ''); the answer is reused for at most five minutes, so a tab left open
+ * never hands the widget an expired token or one from a session that has
+ * since signed out. A failed answer is never reused.
  */
 (function () {
   'use strict';
 
-  var config = window.emporiqaTokenConfig || {};
+  // Read at the top level: document.currentScript is null in callbacks.
+  var script = document.currentScript;
+  var attr = script && script.getAttribute('data-emporiqa-config');
+  var config = {};
+  try {
+    // A page cached from before 1.12.0 still has the inline config.
+    config = (attr ? JSON.parse(attr) : window.emporiqaTokenConfig) || {};
+  } catch (e) {
+    // Unreadable config: stay off, as without one.
+  }
   if (!config.url || !window.fetch) {
     return;
   }
@@ -34,9 +44,6 @@
   var answeredAt = 0;
 
   function fetchToken() {
-    if (config.authenticated === false) {
-      return Promise.resolve('');
-    }
     if (answer && Date.now() - answeredAt < MAX_AGE_MS) {
       return answer;
     }

@@ -6,6 +6,7 @@ namespace Emporiqa\SyliusPlugin\Tests\Twig;
 
 use Emporiqa\SyliusPlugin\Service\ChannelMappingResolver;
 use Emporiqa\SyliusPlugin\Twig\EmporiqaExtension;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Sylius\Component\Channel\Context\ChannelContextInterface;
 use Sylius\Component\Core\Model\ChannelInterface;
@@ -50,6 +51,21 @@ class EmporiqaExtensionTest extends TestCase
             $currencyContext,
             $enabledLanguages,
         );
+    }
+
+    /**
+     * The config the script tag for $file carries, decoded as the browser does.
+     */
+    private function configOf(string $html, string $file): array
+    {
+        $this->assertSame(1, preg_match('#<script src="[^"]*' . preg_quote($file, '#') . '[^"]*" data-emporiqa-config="([^"]*)"#', $html, $m));
+
+        return json_decode(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    private function assertNoInlineScript(string $html): void
+    {
+        $this->assertSame(0, preg_match('#<script(?![^>]*\ssrc=)#', $html), 'a strict Content-Security-Policy blocks an inline script');
     }
 
     private function createChannelWithCurrency(string $code = 'WEB', string $currencyCode = 'EUR'): ChannelInterface
@@ -207,15 +223,33 @@ class EmporiqaExtensionTest extends TestCase
         $extension = $this->createExtension('store-123', 'https://api.emporiqa.com/webhook');
         $html = $extension->renderCartWidget();
 
-        $this->assertStringContainsString('window.emporiqaConfig', $html);
-        $this->assertStringContainsString('"language":"en"', $html);
-        $this->assertStringContainsString('"authenticated":false', $html);
-        $this->assertStringContainsString('"cartEnabled":true', $html);
-        $this->assertStringContainsString('"currency":', $html);
-        $this->assertStringContainsString('"channel":', $html);
-        $this->assertStringContainsString('emporiqa-cart.js', $html);
+        $this->assertNoInlineScript($html);
+        $this->assertSame([
+            'language' => 'en',
+            'currency' => '',
+            'channel' => '',
+            'cartEnabled' => true,
+            'csrfUrl' => '/emporiqa/api/csrf-token',
+            'cartUrl' => '/emporiqa/api/cart',
+        ], $this->configOf($html, 'emporiqa-cart.js'));
+        $this->assertSame(['url' => '/emporiqa/api/customer-token'], $this->configOf($html, 'emporiqa-customer-token.js'));
         $this->assertStringContainsString('store_id=store-123', $html);
         $this->assertStringContainsString('crossorigin="anonymous"', $html);
+    }
+
+    public function testTheConfigIsEscapedForTheAttribute(): void
+    {
+        $locale = 'en"><script>alert(1)</script>\'&';
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn($locale);
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+
+        $html = $this->createExtension()->renderCartWidget();
+
+        $this->assertStringNotContainsString('<script>', $html);
+        $this->assertNoInlineScript($html);
+        // Decoding back to the whole value proves no quote ended the attribute early.
+        $this->assertSame($locale, $this->configOf($html, 'emporiqa-cart.js')['language']);
     }
 
     public function testRenderCartWidgetReturnsEmptyWhenNoStoreId(): void
@@ -239,19 +273,28 @@ class EmporiqaExtensionTest extends TestCase
         $extension = $this->createExtension('store-123', 'https://api.emporiqa.com/webhook', 'secret');
         $html = $extension->renderWidget();
 
-        // A full-page cache could hand the page to another customer.
         $this->assertStringNotContainsString('user_id', $html);
-        $this->assertStringContainsString('window.emporiqaTokenConfig = {"url":"/emporiqa/api/customer-token","authenticated":true}', $html);
+        $this->assertNoInlineScript($html);
+        $this->assertSame(['url' => '/emporiqa/api/customer-token'], $this->configOf($html, 'emporiqa-customer-token.js'));
         $this->assertStringContainsString('emporiqa-customer-token.js?v=', $html);
     }
 
-    public function testRenderWidgetTellsTheTokenScriptAGuestNeedsNoRequest(): void
+    /**
+     * A shared page cache hands one shopper's page to the next, so nothing
+     * in it may depend on who is signed in.
+     */
+    public function testSignedInAndGuestGetTheSamePage(): void
     {
-        $this->security->method('getUser')->willReturn(null);
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('en');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+        $user = $this->createMock(UserInterface::class);
+        $this->security->method('getUser')->willReturnOnConsecutiveCalls($user, $user, null, null);
 
-        $html = $this->createExtension()->renderWidget();
+        $extension = $this->createExtension();
+        $signedIn = $extension->renderWidget() . $extension->renderCartWidget();
 
-        $this->assertStringContainsString('"authenticated":false', $html);
+        $this->assertSame($signedIn, $extension->renderWidget() . $extension->renderCartWidget());
     }
 
     public function testRenderWidgetOmitsUserIdWhenNoSecret(): void
@@ -280,7 +323,7 @@ class EmporiqaExtensionTest extends TestCase
         $extension = $this->createExtension('store-123', 'https://api.emporiqa.com/webhook', 'test-secret', false);
         $html = $extension->renderCartWidget();
 
-        $this->assertStringContainsString('"cartEnabled":false', $html);
+        $this->assertFalse($this->configOf($html, 'emporiqa-cart.js')['cartEnabled']);
     }
 
     public function testWidgetIncludesCurrencyAndChannelFromContext(): void
@@ -525,7 +568,7 @@ class EmporiqaExtensionTest extends TestCase
         $extension = $this->createExtension('store-123', 'https://api.emporiqa.com/webhook', 'secret');
         $html = $extension->renderCartWidget();
 
-        $this->assertStringContainsString('"authenticated":true', $html);
+        $this->assertArrayNotHasKey('authenticated', $this->configOf($html, 'emporiqa-cart.js'));
         $this->assertStringNotContainsString('user_id', $html);
         $this->assertStringContainsString('emporiqa-cart.js?v=', $html);
         $this->assertStringContainsString('emporiqa-customer-token.js?v=', $html);
@@ -567,7 +610,7 @@ class EmporiqaExtensionTest extends TestCase
         );
 
         $html = $extension->renderCartWidget();
-        $this->assertStringContainsString('"authenticated":false', $html);
+        $this->assertSame('en', $this->configOf($html, 'emporiqa-cart.js')['language']);
         $this->assertStringNotContainsString('user_id=', $html);
     }
 
@@ -609,6 +652,88 @@ class EmporiqaExtensionTest extends TestCase
             $router,
         );
 
-        $this->assertStringContainsString('"url":"/shop/emporiqa/api/customer-token"', $extension->renderWidget());
+        $this->assertSame(['url' => '/shop/emporiqa/api/customer-token'], $this->configOf($extension->renderWidget(), 'emporiqa-customer-token.js'));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function offSitePrefixes(): array
+    {
+        return [
+            'two slashes' => ['//evil.example'],
+            'slash and backslash' => ['/\\evil.example'],
+            'tab between the slashes' => ["/\t/evil.example"],
+            'newline between the slashes' => ["/\n/evil.example"],
+        ];
+    }
+
+    #[DataProvider('offSitePrefixes')]
+    public function testABasePathNamingAnotherHostIsIgnored(string $prefix): void
+    {
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('en');
+        $request->method('getBasePath')->willReturn($prefix);
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+
+        $html = $this->createExtension()->renderCartWidget();
+
+        $this->assertStringNotContainsString('evil.example', $html);
+        $this->assertStringContainsString('<script src="/bundles/emporiqaplugin/js/emporiqa-cart.js?v=', $html);
+    }
+
+    #[DataProvider('offSitePrefixes')]
+    public function testARouterUrlNamingAnotherHostIsReplaced(string $prefix): void
+    {
+        $request = $this->createMock(Request::class);
+        $request->method('getLocale')->willReturn('en');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+        $router = $this->createMock(\Symfony\Component\Routing\Generator\UrlGeneratorInterface::class);
+        $router->method('generate')->willReturnCallback(static fn (string $route): string => $prefix . '/' . $route);
+
+        $extension = new EmporiqaExtension(
+            'test-store',
+            'https://api.emporiqa.com/webhook',
+            'test-secret',
+            $this->requestStack,
+            new ChannelMappingResolver(),
+            urlGenerator: $router,
+        );
+        $html = $extension->renderCartWidget();
+
+        $this->assertStringNotContainsString('evil.example', $html);
+        $config = $this->configOf($html, 'emporiqa-cart.js');
+        $this->assertSame('/emporiqa/api/csrf-token', $config['csrfUrl']);
+        $this->assertSame('/emporiqa/api/cart', $config['cartUrl']);
+        $this->assertSame(['url' => '/emporiqa/api/customer-token'], $this->configOf($html, 'emporiqa-customer-token.js'));
+    }
+
+    public function testTheCartUrlsAndScriptsFollowASubPathInstall(): void
+    {
+        $request = Request::create('/shop/en_US/', server: ['SCRIPT_FILENAME' => '/var/www/public/index.php', 'SCRIPT_NAME' => '/shop/index.php', 'PHP_SELF' => '/shop/index.php']);
+        $request->setLocale('en_US');
+        $this->requestStack->method('getCurrentRequest')->willReturn($request);
+        $router = $this->createMock(\Symfony\Component\Routing\Generator\UrlGeneratorInterface::class);
+        $router->method('generate')->willReturnMap([
+            ['emporiqa_customer_token', [], 1, '/shop/emporiqa/api/customer-token'],
+            ['emporiqa_cart_csrf_token', [], 1, '/shop/emporiqa/api/csrf-token'],
+            ['emporiqa_cart_get', [], 1, '/shop/emporiqa/api/cart'],
+        ]);
+
+        $extension = new EmporiqaExtension(
+            'test-store',
+            'https://api.emporiqa.com/webhook',
+            'test-secret',
+            $this->requestStack,
+            new ChannelMappingResolver(),
+            urlGenerator: $router,
+        );
+        $html = $extension->renderCartWidget();
+
+        $config = $this->configOf($html, 'emporiqa-cart.js');
+        $this->assertSame('/shop/emporiqa/api/csrf-token', $config['csrfUrl']);
+        $this->assertSame('/shop/emporiqa/api/cart', $config['cartUrl']);
+        $this->assertStringContainsString('<script src="/shop/bundles/emporiqaplugin/js/emporiqa-cart.js?v=', $html);
+        $this->assertStringContainsString('<script src="/shop/bundles/emporiqaplugin/js/emporiqa-customer-token.js?v=', $html);
     }
 }

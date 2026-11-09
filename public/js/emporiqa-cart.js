@@ -4,11 +4,29 @@
  * Provides window.EmporiqaCartHandler which the Emporiqa embed script calls
  * when a customer requests cart operations through the chat widget.
  *
- * Uses Emporiqa cart API routes (/emporiqa/api/cart/*).
+ * Uses Emporiqa cart API routes (/emporiqa/api/cart/*), at the URLs the
+ * server puts in this script tag's data-emporiqa-config, so a shop under a
+ * sub-path works and the page needs no inline script.
  * Includes CSRF token for authenticated users via X-CSRF-Token header.
  */
 (function () {
   'use strict';
+
+  // Read at the top level: document.currentScript is null in callbacks.
+  // Still exposed as window.emporiqaConfig for shop code that reads it; a
+  // page cached from before 1.12.0 sets it inline instead.
+  var script = document.currentScript;
+  var attr = script && script.getAttribute('data-emporiqa-config');
+  if (attr) {
+    try {
+      window.emporiqaConfig = JSON.parse(attr);
+    } catch (e) {
+      // Unreadable config: the defaults below still reach the cart API.
+    }
+  }
+  var config = window.emporiqaConfig || {};
+  var cartUrl = config.cartUrl || '/emporiqa/api/cart';
+  var csrfUrl = config.csrfUrl || '/emporiqa/api/csrf-token';
 
   var csrfToken = null;
 
@@ -19,7 +37,7 @@
   async function getCsrfToken() {
     if (csrfToken !== null) return csrfToken;
     try {
-      var response = await fetch('/emporiqa/api/csrf-token', { credentials: 'same-origin' });
+      var response = await fetch(csrfUrl, { credentials: 'same-origin' });
       if (response.ok) {
         var data = await response.json();
         csrfToken = data.token || '';
@@ -70,7 +88,7 @@
   }
 
   function getLocale() {
-    return (window.emporiqaConfig && window.emporiqaConfig.language) || '';
+    return config.language || '';
   }
 
   async function postJson(url, body) {
@@ -127,7 +145,7 @@
       });
     }
 
-    var response = await postJson('/emporiqa/api/cart/add', { items: payload });
+    var response = await postJson(cartUrl + '/add', { items: payload });
     if (!response.ok) {
       var errorText = '';
       try {
@@ -153,7 +171,7 @@
       return buildResponse(false, { error: 'Item missing variation_id or product_id' });
     }
 
-    var response = await postJson('/emporiqa/api/cart/update', {
+    var response = await postJson(cartUrl + '/update', {
       variation_id: String(variationId),
       quantity: Number(targetItem.quantity) || 1
     });
@@ -183,7 +201,7 @@
       return buildResponse(false, { error: 'Item missing variation_id or product_id' });
     }
 
-    var response = await postJson('/emporiqa/api/cart/remove', {
+    var response = await postJson(cartUrl + '/remove', {
       variation_id: String(variationId)
     });
 
@@ -202,7 +220,7 @@
   }
 
   async function clearCart() {
-    var response = await postJson('/emporiqa/api/cart/clear');
+    var response = await postJson(cartUrl + '/clear');
     if (!response.ok) {
       return buildResponse(false, { error: 'Failed to clear cart' });
     }
@@ -215,7 +233,7 @@
     if (locale) {
       fetchHeaders['X-Locale'] = locale;
     }
-    var response = await fetch('/emporiqa/api/cart', { credentials: 'same-origin', headers: fetchHeaders });
+    var response = await fetch(cartUrl, { credentials: 'same-origin', headers: fetchHeaders });
     if (!response.ok) {
       return buildResponse(false, { error: 'Failed to load cart' });
     }
@@ -228,7 +246,7 @@
     if (locale) {
       fetchHeaders['X-Locale'] = locale;
     }
-    var response = await fetch('/emporiqa/api/cart/checkout-url', { credentials: 'same-origin', headers: fetchHeaders });
+    var response = await fetch(cartUrl + '/checkout-url', { credentials: 'same-origin', headers: fetchHeaders });
     if (!response.ok) {
       return buildResponse(false, { error: 'Cart is empty' });
     }

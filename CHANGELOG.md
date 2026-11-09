@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [v1.12.0] - 2026-11-09
+
+### In short
+- The plugin no longer prints any inline script, so a Content-Security-Policy
+  whose `script-src` has no `'unsafe-inline'` allows it. Before, such a
+  policy blocked it, signed-in shoppers were treated as guests and the
+  chat's cart lost the shop's language.
+- A shop installed under a sub-path (for example `example.com/shop/`):
+  the chat's cart and the plugin's scripts are found there.
+- Nothing the plugin prints depends on who is signed in, so a shared page
+  cache can serve it safely.
+- New README section "Put the chat on your pages": question links, a link
+  that opens the chat and a chat page, and where to put them in your
+  product template on Sylius 1.x and 2.x.
+
+### Changed
+- `emporiqa_widget()` and `emporiqa_cart_widget()` print only external
+  scripts. Their settings are in a `data-emporiqa-config` attribute on the
+  `emporiqa-cart.js` and `emporiqa-customer-token.js` tags, which read it
+  with `document.currentScript`. `emporiqa-cart.js` still sets
+  `window.emporiqaConfig` for your own code; `window.emporiqaTokenConfig`
+  is no longer set.
+- The cart and CSRF-token URLs come from the router (`csrfUrl`, `cartUrl`
+  in the cart config), and the script URLs carry the request's base path.
+  A base path or URL that a browser would read as another host is ignored.
+- The config no longer says whether the shopper is signed in
+  (`authenticated`): the token script asks the uncached token endpoint
+  when the chat opens, which answers a guest with an empty token.
+- Pages cached before the update keep working: both scripts fall back to
+  the old inline config.
+
+### Deprecated
+- The `$security` argument of `Twig\EmporiqaExtension` is unused and will
+  be removed in the next major.
+
 ## [v1.11.1] - 2026-10-08
 
 ### In short

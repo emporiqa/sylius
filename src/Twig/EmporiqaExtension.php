@@ -22,22 +22,35 @@ class EmporiqaExtension extends AbstractExtension
 
     private const TOKEN_PATH = '/emporiqa/api/customer-token';
 
-    private const JSON_FLAGS = JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR;
+    private const CSRF_ROUTE = 'emporiqa_cart_csrf_token';
+
+    private const CSRF_PATH = '/emporiqa/api/csrf-token';
+
+    private const CART_ROUTE = 'emporiqa_cart_get';
+
+    private const CART_PATH = '/emporiqa/api/cart';
+
+    private const OFF_SITE_PATH = '#^//|[\\\\\x00-\x1f]#';
+
+    private const JSON_FLAGS =JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_THROW_ON_ERROR;
 
     /**
      * @param string   $webhookSecret    @deprecated unused since 1.11.0 (the
      *                                   customer token left the page); kept for
      *                                   BC with custom service definitions that
      *                                   pass it; removed in the next major
+     * @param ?Security $security        @deprecated unused since 1.12.0 (nothing
+     *                                   about the shopper is in the page); kept
+     *                                   for BC, removed in the next major
      * @param string[] $enabledLanguages the synced locales; empty means all
      */
-    public function __construct( // @phpstan-ignore constructor.unusedParameter ($webhookSecret, kept for existing service definitions)
+    public function __construct( // @phpstan-ignore constructor.unusedParameter, constructor.unusedParameter ($webhookSecret and $security, kept for existing service definitions)
         private string $storeId,
         private string $webhookUrl,
         string $webhookSecret,
         private RequestStack $requestStack,
         private ChannelMappingResolver $channelMappingResolver,
-        private ?Security $security = null,
+        ?Security $security = null,
         private bool $cartEnabled = true,
         private ?ChannelContextInterface $channelContext = null,
         private ?CurrencyContextInterface $currencyContext = null,
@@ -56,7 +69,7 @@ class EmporiqaExtension extends AbstractExtension
     }
 
     /**
-     * Renders the widget embed script tag and the customer-token script.
+     * Renders the customer-token script and the widget embed script.
      *
      * The signed-in shopper's token is never in the page or the widget URL:
      * a full-page cache could hand it to another customer, and URLs end up
@@ -73,7 +86,9 @@ class EmporiqaExtension extends AbstractExtension
     }
 
     /**
-     * Renders the cart-enabled widget with inline config and embed script.
+     * Renders the cart handler, the customer-token script and the embed
+     * script. No inline script, so a Content-Security-Policy without
+     * 'unsafe-inline' allows it all.
      */
     public function renderCartWidget(): string
     {
@@ -81,17 +96,9 @@ class EmporiqaExtension extends AbstractExtension
             return '';
         }
 
-        $config = $this->buildWidgetConfig($this->cartEnabled);
-        $configJson = json_encode($config, self::JSON_FLAGS);
-
-        $html = '<script>' . "\n";
-        $html .= 'window.emporiqaConfig = ' . $configJson . ';' . "\n";
-        $html .= '</script>' . "\n";
-        $html .= '<script src="' . $this->assetUrl('emporiqa-cart.js') . '"></script>' . "\n";
-        $html .= $this->renderTokenScript() . "\n";
-        $html .= $this->renderEmbedScript();
-
-        return $html;
+        return $this->renderScript('emporiqa-cart.js', $this->buildWidgetConfig($this->cartEnabled)) . "\n"
+            . $this->renderTokenScript() . "\n"
+            . $this->renderEmbedScript();
     }
 
     /**
@@ -113,50 +120,74 @@ class EmporiqaExtension extends AbstractExtension
     }
 
     /**
-     * `authenticated` only spares a guest the token request; the endpoint
-     * itself answers a guest with an empty token.
+     * Nothing about the shopper is in the page, so a shared page cache can
+     * serve it to anyone: the endpoint answers a guest with an empty token.
      */
     private function renderTokenScript(): string
     {
-        $config = json_encode([
-            'url' => $this->tokenUrl(),
-            'authenticated' => $this->security?->getUser() !== null,
-        ], self::JSON_FLAGS);
+        return $this->renderScript('emporiqa-customer-token.js', [
+            'url' => $this->routeUrl(self::TOKEN_ROUTE, self::TOKEN_PATH),
+        ], ' defer');
+    }
 
-        return '<script>window.emporiqaTokenConfig = ' . $config . ';</script>' . "\n"
-            . '<script src="' . $this->assetUrl('emporiqa-customer-token.js') . '" defer></script>';
+    /**
+     * The script reads its config from data-emporiqa-config through
+     * document.currentScript.
+     */
+    private function renderScript(string $file, array $config, string $attributes = ''): string
+    {
+        return '<script src="' . htmlspecialchars($this->assetUrl($file), ENT_QUOTES, 'UTF-8') . '"'
+            . ' data-emporiqa-config="' . htmlspecialchars(json_encode($config, self::JSON_FLAGS), ENT_QUOTES, 'UTF-8') . '"'
+            . $attributes . '></script>';
     }
 
     /**
      * From the router, so a shop installed under a sub-path asks the right URL.
      */
-    private function tokenUrl(): string
+    private function routeUrl(string $route, string $fallback): string
     {
         try {
-            return $this->urlGenerator?->generate(self::TOKEN_ROUTE) ?? self::TOKEN_PATH;
+            $url = $this->urlGenerator?->generate($route) ?? $fallback;
         } catch (\Throwable) {
-            return self::TOKEN_PATH;
+            return $fallback;
         }
+
+        return $this->pointsOffSite($url) ? $fallback : $url;
     }
 
     /**
-     * Versioned, so browsers load the new file after a plugin update.
+     * The router and the base path both take a forwarded prefix. Browsers read
+     * "//host", "/\host" and "/<tab>/host" alike as another host, and the
+     * script and fetch URLs must never go there.
+     */
+    private function pointsOffSite(string $path): bool
+    {
+        return preg_match(self::OFF_SITE_PATH, $path) === 1;
+    }
+
+    /**
+     * Versioned, so browsers load the new file after a plugin update; under
+     * the request's base path, so it is found when the shop is in a sub-path.
      */
     private function assetUrl(string $file): string
     {
-        return self::ASSET_BASE . $file . '?v=' . EmporiqaPlugin::VERSION;
+        $basePath = $this->requestStack->getCurrentRequest()?->getBasePath() ?? '';
+        if ($this->pointsOffSite($basePath)) {
+            $basePath = '';
+        }
+
+        return $basePath . self::ASSET_BASE . $file . '?v=' . EmporiqaPlugin::VERSION;
     }
 
     private function buildWidgetConfig(bool $cartEnabled): array
     {
-        $user = $this->security?->getUser();
-
         return [
             'language' => $this->getLocale(),
             'currency' => $this->getCurrentCurrencyCode(),
             'channel' => $this->getCurrentChannelKey(),
-            'authenticated' => $user !== null,
             'cartEnabled' => $cartEnabled,
+            'csrfUrl' => $this->routeUrl(self::CSRF_ROUTE, self::CSRF_PATH),
+            'cartUrl' => $this->routeUrl(self::CART_ROUTE, self::CART_PATH),
         ];
     }
 

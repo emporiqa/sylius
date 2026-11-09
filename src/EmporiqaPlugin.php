@@ -14,7 +14,7 @@ final class EmporiqaPlugin extends Bundle
      * dev installs no usable version, so it lives here; bump it with every
      * release, together with the CHANGELOG.
      */
-    public const VERSION = '1.11.1';
+    public const VERSION = '1.12.0';
 
     public function getContainerExtension(): ?ExtensionInterface
     {

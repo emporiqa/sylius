@@ -15,7 +15,7 @@ Try it yourself on the [live demo store](https://demo.emporiqa.com), or watch th
 
 The chat runs on your storefront, reads your catalog and answers in the shopper's own words:
 
-![Emporiqa chat widget open on a storefront, answering which noise cancelling headphones under 400 euros suit long flights: it names the Sennheiser Momentum 4 for up to 60 hours with ANC and the Sony WH-1000XM5 at 250 g, and shows both as product cards with photo, price and a Cart button, above a message box with a photo button and a voice button](docs/images/lead-answer.webp)
+![Emporiqa chat on the demo store, answering which headphones are better for long flights, the Sony WH-1000XM5 or the Sennheiser Momentum 4: it picks the Sennheiser for its 60-hour ANC battery, offers to add it to the cart, and shows a comparison table of both with photo, price, brand and battery, above a message box with a photo button and a voice button](docs/images/lead-answer.webp)
 
 ## Documentation
 
@@ -32,7 +32,7 @@ Everything beyond this page lives in the full developer documentation at [empori
 - **Other ready-made rules**: under Settings > Rules in Emporiqa, returns, cancellations, order changes, quotes and invoice requests go to your team by email
 - **Customer info**: the plugin tells Emporiqa a signed-in shopper's name, email and newest orders (`actions/customer-info`). Emporiqa uses it to answer "where is my order?" with their newest order when they give no number, and to fill in their email in your rules
 - **Order Completion**: Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
-- **Chat Widget**: Cache-safe embeddable chat widget with currency/channel awareness; a signed-in shopper's token comes from an uncached endpoint, never from the page
+- **Chat Widget**: Cache-safe embeddable chat widget with currency/channel awareness and no inline script (a `script-src` without `'unsafe-inline'` allows it); a signed-in shopper's token comes from an uncached endpoint, never from the page
 - **Visual Search**: Shoppers upload a photo in the widget; the chat matches it against your synced Sylius catalog (no extra config required)
 - **Voice Conversations** (optional, off by default): the shopper taps the microphone, speaks, and hears the answer read aloud while the product cards stay on screen. $0.15 more per voice conversation
 - **Widget Appearance**: up to four starter questions per language under the welcome message, your store's picture in the chat header and next to the chat's answers, and your team's own names and photos on their replies
@@ -130,6 +130,8 @@ In your shop layout template (e.g. `templates/bundles/SyliusShopBundle/Layout/ba
 {{ emporiqa_widget() }}
 ```
 
+Both print external scripts only, no inline script, so a `script-src` without `'unsafe-inline'` does not block them; the chat itself needs your Emporiqa host allowed too ([troubleshooting](https://emporiqa.com/docs/widget-embedding/#troubleshooting)). Nothing they print depends on who is signed in, so a shared page cache can serve it. Keep script optimisers (Cloudflare Rocket Loader, bundlers that merge scripts) away from these tags: the scripts read their settings from their own tag, and without it signed-in shoppers are treated as guests.
+
 ### Install Bundle Assets
 
 ```bash
@@ -161,6 +163,55 @@ SITE_URL=https://your-store.com
 ```
 
 Verify the connection with `bin/console emporiqa:test-connection`, then run a first full sync with `bin/console emporiqa:sync:all`. When the sync is done, test the chat in your [Emporiqa dashboard](https://emporiqa.com/platform/) and press **Go live**. New stores start with the chat off, so shoppers see nothing until you do. You can also set it up from Claude or ChatGPT: connect your assistant and it creates your store, sets up the chat and walks you through the install ([emporiqa.com/docs/ai-assistants/](https://emporiqa.com/docs/ai-assistants/)); you install the plugin and press Go live yourself. The [developer documentation](https://emporiqa.com/docs/sylius/) has the widget variants and the rest of the reference.
+
+## Put the chat on your pages
+
+Links and a chat page you put in your pages open your AI shop assistant; a question link sends its question with one click.
+
+A question link (change the question in both places):
+
+```html
+<a href="#emporiqa=Is it waterproof?" class="emporiqa-ask">Is it waterproof?</a>
+```
+
+A link that opens the chat:
+
+```html
+<a href="#emporiqa" class="emporiqa-ask">Chat with us</a>
+```
+
+A chat page, where the chat shows inside the page instead of the corner (give it a height, or it is at least 560px tall):
+
+```html
+<div class="emporiqa-inline"></div>
+```
+
+Where to put it: in a page's content, or in the product template after the add-to-cart form. Create `templates/emporiqa/product_questions.html.twig` with your links, then add it after add to cart.
+
+On Sylius 2.x, in `config/packages/emporiqa.yaml` (or any file in `config/packages/`):
+
+```yaml
+sylius_twig_hooks:
+    hooks:
+        'sylius_shop.product.show.content.info.summary':
+            emporiqa_questions:
+                template: 'emporiqa/product_questions.html.twig'
+                priority: 50 # after add_to_cart (100), before short_description (0)
+```
+
+On Sylius 1.x:
+
+```yaml
+sylius_ui:
+    events:
+        sylius.shop.product.show.right_sidebar:
+            blocks:
+                emporiqa_questions:
+                    template: 'emporiqa/product_questions.html.twig'
+                    priority: 4 # after variant_selection (10), which holds add to cart
+```
+
+Questions are sent straight away once your shop is listed under Site lock in Emporiqa (Settings > Security); otherwise they are filled in for the shopper to send. More options: [emporiqa.com/docs/widget-embedding/#open-from-page](https://emporiqa.com/docs/widget-embedding/#open-from-page).
 
 ## Order status
 
