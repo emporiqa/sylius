@@ -5,15 +5,15 @@
 [![License](https://img.shields.io/packagist/l/emporiqa/sylius-plugin.svg)](LICENSE)
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D8.1-8892BF.svg)](composer.json)
 
-Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), an AI shop assistant for sales and support, in the chat on your shop and in your shop's customer emails, working with your team: a person can take over any chat. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order status lookups, and order completion webhooks.
+Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), an AI shop assistant for sales and support, in the chat on your shop and in your shop's customer emails, working with your team: a person can take over any chat, and your team answers chats and customer emails from your Emporiqa dashboard, where the team inbox and every team member are included. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order status lookups, and order completion webhooks.
 
-The chat reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and drives cart and checkout through the plugin's APIs. It answers in 65 languages, whichever the shopper writes in.
+The chat reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and adds to the cart and links to checkout through the plugin's APIs. It answers in 65 languages, whichever the shopper writes in.
 
 Emporiqa also drafts replies to your shop's customer emails: connect your shop's mailbox (Gmail, Google Workspace, Microsoft 365, Outlook.com, IONOS, Strato, OVHcloud or any IMAP mailbox) in your Emporiqa dashboard and it drafts each reply from your catalog and pages, in the customer's language. Order details in drafts, and automatic replies, work on Gmail, Google Workspace and Microsoft (Outlook.com and Microsoft 365). Automatic replies are off until you switch them on. They cover only topics your team has already answered many times without changing the draft, and each waits 10 minutes so anyone can stop it. Every other reply is a draft your team checks and sends from your own address. Emporiqa never refunds, cancels or changes an order. Nothing to set up in Sylius.
 
-Try it yourself on the [live demo store](https://demo.emporiqa.com), or watch the [30-second demo](https://www.youtube.com/watch?v=y7ARSIUxuXI) (a shopper's question, the recommendation, the cart).
+Try it yourself on the [live demo store](https://demo.emporiqa.com), or watch the [product tour](https://emporiqa.com/tour/?utm_source=sylius&utm_medium=readme) with chapters: a shopper's question, the comparison, the cart, order status, and your team taking over.
 
-The chat runs on your storefront, reads your catalog and answers in the shopper's own words:
+The chat on the demo store:
 
 ![Emporiqa chat on the demo store, answering which headphones are better for long flights, the Sony WH-1000XM5 or the Sennheiser Momentum 4: it picks the Sennheiser for its 60-hour ANC battery, offers to add it to the cart, and shows a comparison table of both with photo, price, brand and battery, above a message box with a photo button and a voice button](docs/images/lead-answer.webp)
 
@@ -30,18 +30,19 @@ Everything beyond this page lives in the full developer documentation at [empori
 - **Order Status rule**: Emporiqa's ready-made Order status rule looks orders up through a signed, rate-limited endpoint; a signed-in shopper gives only the number of an order they placed signed in
 - **Signed-in customers**: a signed-in shopper sees the price your shop calculates for them, is greeted by first name, and is not asked for a name or email when the chat passes them to your team
 - **Other ready-made rules**: under Settings > Rules in Emporiqa, returns, cancellations, order changes, quotes and invoice requests go to your team by email
+- **Team inbox**: your team answers chats and customer emails in the Emporiqa dashboard, with unlimited team members and no seat fees. Anyone can take over a chat, transfer it, reply with saved replies and hand it back to the AI with a note only the team sees. Labels show why a shopper asked for a person, Mine lists the chats you hold, and New reply marks the ones where the shopper wrote back. If nobody picks up a live request within a few minutes (you choose how many, or switch it off), the chat tells the shopper and answers again, and the request waits for your team's follow-up.
 - **Customer info**: the plugin tells Emporiqa a signed-in shopper's name, email and newest orders (`actions/customer-info`). Emporiqa uses it to answer "where is my order?" with their newest order when they give no number, and to fill in their email in your rules
 - **Order Completion**: Webhook notification when checkout completes (supports both Sylius 1.x and 2.x)
 - **Chat Widget**: Cache-safe embeddable chat widget with currency/channel awareness and no inline script (a `script-src` without `'unsafe-inline'` allows it); a signed-in shopper's token comes from an uncached endpoint, never from the page
 - **Put the chat on your pages**: a question link, a chat link or a chat page in your page content or product template opens the chat (see [Put the chat on your pages](#put-the-chat-on-your-pages))
 - **Visual Search**: Shoppers upload a photo in the widget; the chat matches it against your synced Sylius catalog (no extra config required)
-- **Voice Conversations** (optional, off by default): the shopper taps the microphone, speaks, and hears the answer read aloud while the product cards stay on screen. $0.15 more per voice conversation
+- **Voice Conversations** (optional, off by default): the shopper taps the microphone, speaks, and hears the answer read aloud while the product cards stay on screen. Voice conversations cost extra (see [Pricing](#pricing))
 - **Widget Appearance**: up to four starter questions per language under the welcome message, your store's picture in the chat header and next to the chat's answers, and your team's own names and photos on their replies
 - **Multi-language**: Syncs content in all configured Sylius locales with currency switcher support. The chat itself answers in 65 languages, independent of which locales you sync. A locale left out of `enabled_languages` is not synced, and its pages show no chat
 - **Console Commands**: Memory-efficient sync commands with batching, dry-run, and session management
 - **Webhook Retry**: Automatic retry with backoff for transient failures; changes Emporiqa did not accept (down, a wrong secret) are kept and sent again with the next change
 - **Only what the shop shows**: a disabled product, variant or page is removed from Emporiqa, so the chat never links a page your shop answers with 404
-- **Fully Extensible**: Decorate any service interface, listen to events (`PostFormatEvent`, `CartOperationEvent`, `PreSyncEvent`, etc.)
+- **Extensible**: Decorate any service interface, listen to events (`PostFormatEvent`, `CartOperationEvent`, `PreSyncEvent`, etc.)
 
 Emporiqa also works with Drupal Commerce, WooCommerce, Magento, PrestaShop, Shopware, and any store via webhook API. One Emporiqa account and dashboard runs across all of them.
 
@@ -323,7 +324,7 @@ Product, variant and page changes reach Emporiqa automatically through Sylius re
 
 ## Pricing
 
-The plugin is free. Emporiqa is Pay-as-you-go: $0.25 per conversation and $0.15 per AI-drafted email reply you send, +$0.15 per voice conversation (optional, off by default). New stores get $25 of signup credit (about 100 conversations, once), no card required at signup. No seat fees, and AI model costs are included. You set a monthly limit on the billing page (new stores start at $199): a ceiling, not a charge, which you can raise, lower or clear. At the limit the chat is hidden from your shop and charging stops. Prices exclude VAT. Enterprise option for catalogs over 100,000 products. Full pricing at [emporiqa.com/pricing/](https://emporiqa.com/pricing/).
+The plugin is free. Emporiqa is a paid service: every store starts with free credit, and no card is needed to sign up. Your team's inbox and every team member are included, with no seat fees. Pricing: [emporiqa.com/pricing/](https://emporiqa.com/pricing/?utm_source=sylius&utm_medium=readme)
 
 ## Support
 
