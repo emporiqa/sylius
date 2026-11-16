@@ -1,4 +1,4 @@
-# Emporiqa Sylius Plugin
+# Emporiqa: AI Chatbot for Sylius
 
 [![Packagist Version](https://img.shields.io/packagist/v/emporiqa/sylius-plugin.svg)](https://packagist.org/packages/emporiqa/sylius-plugin)
 [![Packagist Downloads](https://img.shields.io/packagist/dt/emporiqa/sylius-plugin.svg)](https://packagist.org/packages/emporiqa/sylius-plugin)
@@ -6,6 +6,8 @@
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D8.1-8892BF.svg)](composer.json)
 
 Integrates [Sylius](https://sylius.com) with [Emporiqa](https://emporiqa.com?utm_source=github&utm_medium=readme&utm_campaign=sylius_plugin), an AI shop assistant for sales and support, in the chat on your shop and in your shop's customer emails, working with your team: a person can take over any chat, and your team answers chats and customer emails from your Emporiqa dashboard, where the team inbox and every team member are included. The plugin provides webhook-based synchronization of products and pages, in-chat cart operations with checkout, an embeddable chat widget, order status lookups, and order completion webhooks.
+
+**Does it work with Sylius's own AI plugins?** Yes, alongside them. Plugins such as Ask AI work for you in the admin; Emporiqa is the AI chatbot your shoppers talk to on the storefront. Emporiqa hosts the AI, so the bundle adds no LLM SDK to your project and there is no AI provider key to set up.
 
 The chat reads your synced catalog and pages: a shopper describes what they need (or uploads a photo), and it returns matching products, answers questions from your own content, and adds to the cart and links to checkout through the plugin's APIs. It answers in 65 languages, whichever the shopper writes in.
 
@@ -39,6 +41,7 @@ Everything beyond this page lives in the full developer documentation at [empori
 - **Voice Conversations** (optional, off by default): the shopper taps the microphone, speaks, and hears the answer read aloud while the product cards stay on screen. Voice conversations cost extra (see [Pricing](#pricing))
 - **Widget Appearance**: up to four starter questions per language under the welcome message, your store's picture in the chat header and next to the chat's answers, and your team's own names and photos on their replies
 - **Multi-language**: Syncs content in all configured Sylius locales with currency switcher support. The chat itself answers in 65 languages, independent of which locales you sync. A locale left out of `enabled_languages` is not synced, and its pages show no chat
+- **Claude and ChatGPT**: connect your AI assistant to Emporiqa and it creates your store, sets up the chat and tells you how each store is doing ([how to connect it](https://emporiqa.com/docs/ai-assistants/?utm_source=sylius&utm_medium=readme)); changes to a live chat are made in your dashboard
 - **Console Commands**: Memory-efficient sync commands with batching, dry-run, and session management
 - **Webhook Retry**: Automatic retry with backoff for transient failures; changes Emporiqa did not accept (down, a wrong secret) are kept and sent again with the next change
 - **Only what the shop shows**: a disabled product, variant or page is removed from Emporiqa, so the chat never links a page your shop answers with 404
